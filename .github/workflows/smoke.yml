@@ -1,0 +1,33 @@
+# 每周自动跑一次各平台冒烟测试（smoke_test.py）。
+# 哪个平台的解析路线被反爬更新弄坏了，这里会变红 —— 修一处就好，
+# 不用等用户来报「下载不了了」。
+#
+# 说明：GitHub 的 runner 在海外，YouTube/X/TikTok 直连没问题；
+# 国内平台（抖音/快手等）从海外访问的表现和国内不同，如果它们在
+# 这里误报，可以本地跑 `python smoke_test.py` 为准，或只测部分平台：
+#   python smoke_test.py kuaishou douyin
+
+name: smoke
+
+on:
+  schedule:
+    - cron: "23 3 * * 1"     # 每周一 UTC 3:23（北京 11:23）
+  workflow_dispatch:          # 支持手动触发
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖
+        run: |
+          pip install requests playwright tkinterdnd2 yt-dlp
+          playwright install chromium
+
+      - name: 冒烟测试
+        run: python smoke_test.py

@@ -1,0 +1,13 @@
+# 登录凭证与隐私 —— 绝对不能上传
+profile_douyin/
+profile_kuaishou/
+cookies/
+
+# 运行产物
+logs/
+__pycache__/
+*.pyc
+*.part
+
+# 本机个性化
+*.lnk
