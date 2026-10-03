@@ -29,6 +29,10 @@ jobs:
           pip install requests playwright tkinterdnd2 yt-dlp
           playwright install chromium
 
+      # 用一键安装器装 ffmpeg —— 顺便每次都在真实环境验证安装器本身没坏
+      - name: 确保 ffmpeg
+        run: python -c "import toolssetup; toolssetup.install_tool('ffmpeg', lambda f, t: None)"
+
       - name: 冒烟测试
         run: python smoke_test.py
         env:

@@ -57,7 +57,7 @@ SMOKE_MAX_HEIGHT = 480
 _SKIP_HINTS = ("404", "not found", "已删除", "不存在", "没有视频",
                "私密", "private", "不可用", "unavailable", "代理",
                "proxy", "找不到 yt-dlp", "没有找到", "no video formats",
-               "blocked", "ip address", "cookies")
+               "blocked", "ip address", "cookies", "timed out")
 
 
 def _run_one(source, case, outdir):
