@@ -49,8 +49,8 @@ Python 3.10 或更新版本，安装时**勾选 "Add python.exe to PATH"**
 **2. 拉代码、装依赖**
 
 ```bat
-git clone <本仓库的地址>
-cd <仓库文件夹>
+git clone https://github.com/heng35040-hub/video-downloader.git
+cd video-downloader
 pip install requests playwright tkinterdnd2
 playwright install chromium
 ```
