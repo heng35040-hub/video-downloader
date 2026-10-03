@@ -10,6 +10,7 @@ Playwright 是懒加载的（在函数内部 import）：导入它要一两秒�
 """
 import os
 import re
+import tempfile
 import time
 
 import config
@@ -178,13 +179,22 @@ def _dest_path(outdir, title, vid, ext=".mp4"):
     while os.path.exists(dest):
         dest = os.path.join(outdir, f"{name} ({n}){ext}")
         n += 1
+    # 标题是外部输入：分隔符已被 _sanitize 剥掉，这里再钉一道 ——
+    # 最终路径必须落在保存目录这一层，异常时退回纯 ID 命名
+    if os.path.dirname(os.path.abspath(dest)) != os.path.abspath(outdir):
+        dest = os.path.join(outdir, f"douyin_{vid}{ext}")
     return dest
 
 
 def _download(media_url, dest, session, emit, job,
               referer="https://www.douyin.com/"):
-    """流式下载。先写 .part 再改名，取消时不会留下看着像完整的半个文件。"""
-    part = dest + ".part"
+    """流式下载。先写临时文件再改名，取消时不会留下看着像完整的半个文件。
+
+    临时文件用 tempfile.mkstemp 在保存目录里生成：路径由操作系统随机
+    给出、完全不经手外部数据，页面标题再恶意也构不成路径穿越。
+    """
+    directory = os.path.dirname(os.path.abspath(dest))
+    fd, part = tempfile.mkstemp(dir=directory, prefix="dl_", suffix=".part")
     try:
         with session.get(media_url,
                          headers={"Referer": referer},
@@ -192,7 +202,7 @@ def _download(media_url, dest, session, emit, job,
             resp.raise_for_status()
             total = int(resp.headers.get("Content-Length") or 0)
             done = 0
-            with open(part, "wb") as f:
+            with os.fdopen(fd, "wb") as f:
                 for chunk in resp.iter_content(256 * 1024):
                     if job.cancel.is_set():
                         raise _Cancelled()
