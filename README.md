@@ -40,20 +40,35 @@
 
 ## 安装
 
+**1. 安装 Python**
+
+到 [python.org/downloads](https://www.python.org/downloads/) 装
+Python 3.10 或更新版本，安装时**勾选 "Add python.exe to PATH"**
+（tkinter 界面库 Windows 版自带，无需额外安装）。
+
+**2. 拉代码、装依赖**
+
 ```bat
 git clone <本仓库的地址>
 cd <仓库文件夹>
-pip install requests playwright tkinterdnd2 yt-dlp
+pip install requests playwright tkinterdnd2
 playwright install chromium
 ```
 
-启动：
+**3. 启动**
 
 ```bat
 python main.py
 ```
 
-双击启动可参考 `run.bat`（用 `pythonw.exe` 静默启动，自己建个快捷方式即可）。
+**4. 首次启动：缺什么补什么**
+
+程序启动时会自检 yt-dlp 和 ffmpeg，缺了会弹窗 —— 点「一键下载并配置」
+即自动从官方源下载装好（装进程序目录 `tools\`，立即生效），**不需要
+手动装这两个工具**。想手动装也可以：`pip install yt-dlp` +
+[winget install Gyan.FFmpeg](https://ffmpeg.org)，加入 PATH 后程序同样能认。
+
+双击启动可参考 `run.bat`（自动找 pythonw.exe 静默启动，可自己建个快捷方式）。
 
 ## 平台说明
 
