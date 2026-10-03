@@ -24,6 +24,11 @@ import tempfile
 import time
 import traceback
 
+# CI 的 Windows runner 上 stdout 默认 cp1252，中文/emoji 会炸
+for _s in (sys.stdout, sys.stderr):
+    if hasattr(_s, "reconfigure"):
+        _s.reconfigure(encoding="utf-8", errors="replace")
+
 import config
 import errors
 

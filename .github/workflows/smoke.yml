@@ -31,3 +31,5 @@ jobs:
 
       - name: 冒烟测试
         run: python smoke_test.py
+        env:
+          PYTHONUTF8: "1"
