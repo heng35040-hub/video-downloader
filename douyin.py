@@ -39,27 +39,77 @@ class _Cancelled(Exception):
     pass
 
 
+# 浏览器选择顺序：系统自带 Edge → 系统 Chrome → Playwright 自带 chromium
+# → Playwright 默认浏览器。Windows 10/11 默认自带 Edge，所以绝大多数用户
+# 开箱即用，不必额外下载约 150MB 的 chromium；只有极精简的系统才会落到
+# 后面两步（那两步需要事先 playwright install chromium）。
+_BROWSER_CHANNELS = ("msedge", "chrome", "chromium")
+
+_NO_BROWSER_HINT = (
+    "没能启动浏览器。程序会依次尝试系统自带的 Microsoft Edge、Google Chrome，"
+    "再回退到 Playwright 自带浏览器，但都没找到。\n"
+    "请安装 Microsoft Edge（Windows 10/11 通常自带）或 Google Chrome 后重试。"
+)
+
+_DRIVER_HINT = (
+    "Playwright 驱动没能启动（打包时可能漏收了 playwright/driver）。\n"
+    "请到项目 Releases 页重新下载最新版 exe；从源码运行则执行："
+    "pip install -r requirements.txt"
+)
+
+
+def _browser_hint(exc):
+    """按异常内容给出对新手有用的中文提示；认不出就返回空串。"""
+    text = str(exc)
+    if "Driver not found" in text or "playwright/driver" in text:
+        return _DRIVER_HINT
+    if ("Executable doesn't exist" in text
+            or "browserType.launch" in text
+            or "channel" in text.lower()):
+        return _NO_BROWSER_HINT
+    return ""
+
+
+def _launch(p, headless, channel=None):
+    """按给定 channel 起持久化上下文；channel=None 表示用 Playwright 自带浏览器。"""
+    kwargs = {
+        "headless": headless,
+        "args": [
+            "--no-proxy-server",   # 否则 Chromium 继承系统代理，抖音走代理必挂
+            "--disable-blink-features=AutomationControlled",
+        ],
+        "user_agent": config.BROWSER_UA,
+        "locale": "zh-CN",
+        "viewport": {"width": 1280, "height": 800},
+    }
+    if channel:
+        kwargs["channel"] = channel
+    return p.chromium.launch_persistent_context(config.PROFILE_DOUYIN, **kwargs)
+
+
 def _open_context(p, headless):
     """起一个带本地登录态的浏览器上下文。
 
     用持久化 profile（config.PROFILE_DOUYIN）而不是一次性上下文：
     抖音现在对游客上登录墙，第一次在有头窗口里扫码登录后，
-    登录态长期保存在 profile 里，之后免登录。channel="chromium"
-    选完整版浏览器；默认的 headless shell 的 UA 里会带
-    HeadlessChrome，一行代码就被认出来。
+    登录态长期保存在 profile 里，之后免登录。
+
+    浏览器优先用系统自带的 Edge/Chrome（channel 参数），不下载 chromium：
+    一是省掉约 150MB 的首次下载，二是完整版浏览器的 UA 里不会带
+    HeadlessChrome 这类一眼被反爬认出的标记。
     """
-    return p.chromium.launch_persistent_context(
-        config.PROFILE_DOUYIN,
-        headless=headless,
-        channel="chromium",
-        args=[
-            "--no-proxy-server",   # 否则 Chromium 继承系统代理，抖音走代理必挂
-            "--disable-blink-features=AutomationControlled",
-        ],
-        user_agent=config.BROWSER_UA,
-        locale="zh-CN",
-        viewport={"width": 1280, "height": 800},
-    )
+    last = None
+    for channel in _BROWSER_CHANNELS:
+        try:
+            return _launch(p, headless, channel)
+        except Exception as exc:        # 这个 channel 没装，试下一个
+            last = exc
+    try:
+        return _launch(p, headless, None)   # 回退：Playwright 自带 chromium
+    except Exception as exc:
+        last = exc
+    raise RuntimeError(
+        f"{last}\n\n{_browser_hint(last) or _NO_BROWSER_HINT}") from last
 
 
 def _session():
@@ -659,5 +709,8 @@ def download_douyin(url, outdir, emit, job, chooser=None):
                        "窗口里扫码登录抖音（只需一次，之后免登录），"
                        "登录后视频和音乐都能下。")
     except Exception as exc:
-        return False, (f"抖音模块出错：{type(exc).__name__}: {exc}\n"
-                       "如果提示浏览器不存在，请运行：playwright install chromium")
+        msg = f"抖音模块出错：{type(exc).__name__}: {exc}"
+        hint = _browser_hint(exc)
+        if hint:
+            msg += "\n" + hint
+        return False, msg

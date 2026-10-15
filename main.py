@@ -721,7 +721,88 @@ class App:
         self.root.destroy()
 
 
+def _selftest(argv):
+    """`--selftest` 无界面自检，返回进程退出码。
+
+    给 CI 用：只有真正跑过冻结产物，才能确认 Playwright 驱动、tkinterdnd2
+    原生库、requests 这些「打包时容易静默漏掉」的东西确实进了 exe。
+    冻结后 console=False，标准输出会被重定向进日志文件，所以结果同时写一份
+    到文件（默认 %TEMP%\\VideoDownloader-selftest.txt，可用
+    `--selftest-out <路径>` 指定），CI 读文件即可。
+    """
+    import tempfile
+    import time as _time
+
+    t_start = _time.time()
+    lines = []
+    ok = True
+
+    def check(name, fn):
+        nonlocal ok
+        t0 = _time.time()
+        try:
+            fn()
+            lines.append(f"PASS  {name}  ({(_time.time() - t0) * 1000:.0f} ms)")
+        except Exception as exc:
+            ok = False
+            lines.append(f"FAIL  {name}: {type(exc).__name__}: {exc}")
+
+    def _requests_ok():
+        # 验证 email / http 这些标准库没被 build.spec 的 excludes 误排掉
+        import requests          # noqa: F401
+        requests.Session()
+
+    def _dnd_ok():
+        if not DND_AVAILABLE:
+            raise RuntimeError("tkinterdnd2 导入失败（拖拽不可用）")
+        import tkinterdnd2
+        pkg = os.path.dirname(tkinterdnd2.__file__)
+        tkdnd = os.path.join(pkg, "tkdnd")
+        if not os.path.isdir(tkdnd):
+            raise RuntimeError(f"tkdnd 原生库缺失：{tkdnd}")
+
+    def _playwright_ok():
+        # 进入 sync_playwright 就会拉起 node 驱动 —— 驱动没收进包时这里必炸
+        from playwright.sync_api import sync_playwright
+        with sync_playwright():
+            pass
+
+    check("import requests（email/http 未被误排除）", _requests_ok)
+    check("tkinterdnd2 原生库 tkdnd", _dnd_ok)
+    check("playwright 驱动可启动", _playwright_ok)
+
+    lines += [
+        f"frozen: {getattr(sys, 'frozen', False)}",
+        f"base: {config.BASE}",
+        f"user data: {config.USER_DATA_DIR}",
+        f"yt-dlp: {config.YTDLP}",
+        f"ffmpeg dir: {config.FFMPEG_DIR}",
+        f"解释器内耗时: {(_time.time() - t_start) * 1000:.0f} ms",
+        f"RESULT: {'PASS' if ok else 'FAIL'}",
+    ]
+    text = "\n".join(lines) + "\n"
+
+    out = os.path.join(tempfile.gettempdir(), "VideoDownloader-selftest.txt")
+    if "--selftest-out" in argv:
+        idx = argv.index("--selftest-out")
+        if idx + 1 < len(argv):
+            out = argv[idx + 1]
+    try:
+        with open(out, "w", encoding="utf-8") as fh:
+            fh.write(text)
+    except Exception:
+        logging.exception("自检报告写入失败")
+    try:
+        print(text)
+    except Exception:
+        pass
+    return 0 if ok else 1
+
+
 def main():
+    if "--selftest" in sys.argv:
+        sys.exit(_selftest(sys.argv))
+
     _setup_logging()
     logging.info("=== 启动 %s ===", datetime.datetime.now())
 

@@ -12,6 +12,10 @@ dist/
 build/
 .pytest_cache/
 
+# 打包产物（CI 生成，不入库）
+VideoDownloader-win64.zip
+SHA256SUMS.txt
+
 # 本机个性化
 *.lnk
 video-downloader/

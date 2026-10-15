@@ -25,9 +25,12 @@
 ## 环境要求
 
 - Windows 10/11
-- Python 3.10+（含 tkinter）
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) 和
-  [ffmpeg](https://ffmpeg.org)
+- 直接使用 Releases 中的 zip 或 exe：无需安装 Python、yt-dlp 或 ffmpeg；首次运行可在弹窗中一键下载所需组件
+- 从源码运行：Python 3.10+（含 tkinter）
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) 和 [ffmpeg](https://ffmpeg.org)（源码运行时需自行安装；打包版首次运行可一键下载）
+- **抖音功能**使用系统自带的 Microsoft Edge 或 Google Chrome 驱动浏览器
+  （Windows 10/11 一般自带 Edge），**无需额外下载约 150MB 的 chromium**；
+  只有在极精简的系统上两者都没有时，才需要自行安装 Edge/Chrome
 
   **没有装也没关系**：启动时会弹窗提示缺什么，点「一键下载并配置」
   即可从官方源自动下载（yt-dlp 来自 GitHub 官方 releases，ffmpeg 来自
@@ -39,6 +42,21 @@
   （7897 / 7890 / 10809 等）；自动探测不合适时在 `config.py` 里手动指定
 
 ## 安装
+
+**方式一：下载 zip（推荐，不需要 Python 环境）**
+
+到 [GitHub 最新版下载页](https://github.com/heng35040-hub/video-downloader/releases/latest) 下载 `VideoDownloader-win64.zip`，
+解压后双击文件夹里的 `VideoDownloader.exe` 即可 —— 不需要装 Python、
+不需要配环境变量，**启动约 1–3 秒**。
+
+**方式二：下载单文件 exe（不用解压，但启动慢）**
+
+同一个下载页里的 `VideoDownloader.exe` 是单文件版，双击即用、不用解压。
+代价是它每次启动都要先把自身约 1200 个文件解压到临时目录，并被杀软逐个
+扫描，**实测每次启动约 30 秒**，被杀软误报的概率也更高。两种形态功能完全
+相同，只有「启动速度 vs 是否需要解压」的取舍。
+
+**方式三：从源码运行**
 
 **1. 安装 Python**
 
@@ -52,8 +70,10 @@ Python 3.10 或更新版本，安装时**勾选 "Add python.exe to PATH"**
 git clone https://github.com/heng35040-hub/video-downloader.git
 cd video-downloader
 pip install -r requirements.txt
-playwright install chromium
 ```
+
+> 抖音功能不需要 `playwright install chromium`：程序会直接用系统自带的
+> Edge / Chrome（`douyin.py` 的 `_BROWSER_CHANNELS`）。
 
 **3. 启动**
 
@@ -114,6 +134,7 @@ procutil.py          子进程封装（编码、进度、进程树取消）
 errors.py            报错翻译 + 下载前预检
 config.py            路径与常量
 conftest.py          pytest 路径配置
+build.spec           PyInstaller 打包配置（onefile / onedir 两种形态）
 tests/               单元测试（URL 解析、平台识别、报错翻译）
 requirements.txt     运行时依赖
 requirements-dev.txt 开发/测试依赖
@@ -126,7 +147,7 @@ requirements-dev.txt 开发/测试依赖
 
 | 平台 | 解析方式 | 易碎点（改这里） |
 |---|---|---|
-| 抖音 | Playwright 捞 CDN 直链 / 音乐接口 JSON | `douyin.py` 的响应过滤条件与 `_extract_play_urls` |
+| 抖音 | Playwright 捞 CDN 直链 / 音乐接口 JSON | `douyin.py` 的响应过滤条件、`_extract_play_urls` 与浏览器回退链 `_BROWSER_CHANNELS` |
 | 快手 | 纯 requests 解析 `__APOLLO_STATE__` | `kuaishou.py` 的 `_parse_detail` 与 `kpn` 参数 |
 | 其余 | yt-dlp | 基本只需保持 yt-dlp 最新（tools\ 里的副本每两周自动 `-U`） |
 
@@ -138,6 +159,17 @@ requirements-dev.txt 开发/测试依赖
 **单元测试**：`pytest -q` 跑 `tests/` 下的纯逻辑测试（URL 抠取、平台识别、
 报错翻译），不联网、秒级完成；`.github/workflows/tests.yml` 在每次 push /
 PR 时自动执行。改完代码先跑这个，再考虑跑冒烟。
+
+**打包**：`build.spec` 支持两种形态，用环境变量 `VD_BUILD_MODE` 切换 ——
+默认 `onefile`（产物 `dist\VideoDownloader.exe` 单文件），
+`VD_BUILD_MODE=onedir` 则产出 `dist\VideoDownloader\` 文件夹。
+Release 两种都发：zip（onedir）启动 1–3 秒，是主推；单文件 exe 启动约 30 秒，作备选。
+
+**打包自检**：`--selftest` 会无界面跑一遍启动自检，确认 Playwright 驱动、
+tkinterdnd2 原生库、requests 都真的打进了包，结果写入
+`%TEMP%\VideoDownloader-selftest.txt`，退出码 0 表示通过。
+`.github/workflows/build.yml` 在两种形态构建后都会执行这一步 ——
+PyInstaller 漏收文件时构建照样「成功」，只有这个自检能暴露问题。
 
 **不要做的事**：不要接验证码打码平台、不要做多线程批量爬取——
 那是法律风险和封禁风险同时陡增的区域，个人工具不需要。

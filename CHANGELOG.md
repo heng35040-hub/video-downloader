@@ -13,6 +13,14 @@
 - 移除仓库内的收款二维码图片；打赏入口改为接入爱发电主页
   （`config.py` 的 `DONATE_URL = https://afdian.com/a/anodev`），
   README 的「支持作者」段落同步给出链接
+- **打包改为双形态**：`build.spec` 支持 onefile / onedir，用环境变量
+  `VD_BUILD_MODE` 切换。Release 主推 onedir 的 `VideoDownloader-win64.zip`
+  （解压后双击，启动 1–3 秒），同时保留单文件 `VideoDownloader.exe` 作备选。
+  实测（Win11 + Defender）onefile 每次启动都要解压约 1200 个文件并被杀软
+  逐个扫描，约 35 秒，不适合作为主推形态
+- **抖音改用系统自带的 Edge / Chrome**（`douyin.py` 的 `_BROWSER_CHANNELS`，
+  依次回退 msedge → chrome → chromium → 默认）：不再要求用户下载约 150MB
+  的 chromium，包体积更小；浏览器启动失败时给出普通用户可执行的中文提示
 - `build.spec` 的 `CompanyName` 改为中性的 "Video Downloader"
 - CI 统一改用 `requirements.txt` 安装依赖
 
@@ -21,6 +29,19 @@
 - `tests/` 单元测试（URL 抠取、平台识别、报错翻译），纯逻辑、不联网
 - `.github/workflows/tests.yml`：push / PR 自动跑 pytest（Python 3.10 / 3.12）
 - `.github/ISSUE_TEMPLATE/`：Bug 报告表单与联系入口
+- `main.py --selftest`：冻结产物无界面自检（Playwright 驱动、tkinterdnd2
+  原生库、requests、分段耗时），CI 在两种形态构建后执行，防止
+  「构建成功但运行缺文件」
+- Release 同时提供 zip 与单文件 exe 两种形态
+
+### 修复
+- `build.spec` 的 `excludes` 不再排除 `email` / `http` / `xml` / `html` /
+  `dataclasses` / `configparser` 等标准库 —— 它们是 `requests` 的运行时依赖
+  （`email.utils`、`email.parser`、`http.client`、`http.cookiejar`），排除后
+  打包版「一键下载 yt-dlp/ffmpeg」与抖音/快手下载会在运行时 `ImportError`
+- 移除 CI 中无效的 `playwright install chromium`（浏览器不会被打进包，
+  只落在 runner 本机）
+- README / Release 文案修正：onefile 的启动延迟是**每次**启动，而非仅首次
 
 ### 安全
 - 重写 git 历史，彻底清除历史提交中残留的本机路径文件
