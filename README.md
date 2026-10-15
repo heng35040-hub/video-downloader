@@ -53,7 +53,7 @@
 
 同一个下载页里的 `VideoDownloader.exe` 是单文件版，双击即用、不用解压。
 代价是它每次启动都要先把自身约 1200 个文件解压到临时目录，并被杀软逐个
-扫描，**实测每次启动约 30 秒**，被杀软误报的概率也更高。两种形态功能完全
+扫描，**实测每次启动约 35 秒**，被杀软误报的概率也更高。两种形态功能完全
 相同，只有「启动速度 vs 是否需要解压」的取舍。
 
 **方式三：从源码运行**
@@ -163,7 +163,7 @@ PR 时自动执行。改完代码先跑这个，再考虑跑冒烟。
 **打包**：`build.spec` 支持两种形态，用环境变量 `VD_BUILD_MODE` 切换 ——
 默认 `onefile`（产物 `dist\VideoDownloader.exe` 单文件），
 `VD_BUILD_MODE=onedir` 则产出 `dist\VideoDownloader\` 文件夹。
-Release 两种都发：zip（onedir）启动 1–3 秒，是主推；单文件 exe 启动约 30 秒，作备选。
+Release 两种都发：zip（onedir）启动 1–3 秒，是主推；单文件 exe 启动约 35 秒，作备选。
 
 **打包自检**：`--selftest` 会无界面跑一遍启动自检，确认 Playwright 驱动、
 tkinterdnd2 原生库、requests 都真的打进了包，结果写入
