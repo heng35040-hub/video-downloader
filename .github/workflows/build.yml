@@ -1,0 +1,116 @@
+# Build and Release Windows Executable
+#
+# Triggers:
+#   - Push tag matching v* (e.g., v2026.10.15)
+#   - Manual workflow_dispatch
+#
+# Outputs:
+#   - VideoDownloader-win64.zip (onedir mode)
+#   - SHA256SUMS.txt
+#   - Auto-publishes to GitHub Releases
+
+name: Build Windows Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g., v2026.10.15)"
+        required: true
+        type: string
+
+permissions:
+  contents: write  # For creating releases
+
+jobs:
+  build:
+    name: Build on Windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pyinstaller requests playwright tkinterdnd2
+          playwright install chromium
+
+      - name: Verify source compiles
+        run: |
+          python -m py_compile main.py config.py backends.py douyin.py kuaishou.py procutil.py errors.py toolssetup.py smoke_test.py
+          echo "All source files compile OK"
+
+      - name: Build with PyInstaller (onedir mode)
+        run: |
+          pyinstaller --clean build.spec
+          # Verify exe exists
+          ls -la dist/VideoDownloader/VideoDownloader.exe
+
+      - name: Package release zip
+        run: |
+          cd dist
+          7z a -tzip "../VideoDownloader-win64.zip" VideoDownloader/*
+          cd ..
+          ls -lh VideoDownloader-win64.zip
+
+      - name: Generate SHA256 checksums
+        run: |
+          certutil -hashfile VideoDownloader-win64.zip SHA256 > SHA256SUMS.txt
+          type SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: Video Downloader ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body: |
+            ## Video Downloader ${{ github.ref_name }}
+
+            Windows 64-bit portable build (onedir mode).
+
+            ### Download
+            - **VideoDownloader-win64.zip** — 解压即用，无需安装
+
+            ### 验证完整性
+            ```powershell
+            certutil -hashfile VideoDownloader-win64.zip SHA256
+            ```
+            对比下方 SHA256SUMS.txt 内容。
+
+            ### 运行要求
+            - Windows 10/11 (64-bit)
+            - 下载被墙平台 (YouTube/X/Instagram/TikTok) 需本机代理软件运行
+            - 首次启动会自动下载 yt-dlp 和 ffmpeg 到 `%LOCALAPPDATA%\VideoDownloader\tools\`
+
+            ### 变更日志
+            见 [CHANGELOG.md](https://github.com/heng35040-hub/video-downloader/blob/main/CHANGELOG.md) 或提交历史。
+
+          files: |
+            VideoDownloader-win64.zip
+            SHA256SUMS.txt
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+
+      - name: Upload artifacts (for manual trigger)
+        uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: VideoDownloader-win64
+          path: |
+            VideoDownloader-win64.zip
+            SHA256SUMS.txt
+          retention-days: 7

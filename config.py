@@ -5,17 +5,43 @@ Paths prefer local machine state, then PATH lookup, so other users' machines
 work out of the box. yt-dlp / ffmpeg resolve via hardcoded paths first,
 then PATH — not pure PATH dependency (Explorer-launched processes inherit
 user PATH which may differ from terminal).
+
+When frozen (PyInstaller), BASE points to the executable directory.
+Writable directories (logs, cookies, profiles, tools) are redirected to
+user data directory (LOCALAPPDATA) to avoid permission issues.
 """
 import os
 import re
 import shutil
 import sys
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+# ---- PyInstaller frozen detection ----
+def _get_base_dir():
+    """Get base directory: script dir in dev, executable dir when frozen."""
+    if getattr(sys, "frozen", False):
+        # PyInstaller --onedir: sys.executable is the .exe
+        # PyInstaller --onefile: sys._MEIPASS is the temp extract dir
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
 
-# 一键安装的工具落到程序目录 tools\ 下；解析顺序始终是
+BASE = _get_base_dir()
+
+# ---- User data directory (writable) ----
+def _get_user_data_dir():
+    """Get writable user data directory for logs, cookies, profiles, tools."""
+    if getattr(sys, "frozen", False):
+        # Frozen: use LOCALAPPDATA\AppName
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        return os.path.join(base, "VideoDownloader")
+    # Dev: use project directory
+    return BASE
+
+USER_DATA_DIR = _get_user_data_dir()
+os.makedirs(USER_DATA_DIR, exist_ok=True)
+
+# 一键安装的工具落到用户数据目录 tools\ 下；解析顺序始终是
 # 本机现状 → tools\ → PATH，装完即用
-TOOLS_DIR = os.path.join(BASE, "tools")
+TOOLS_DIR = os.path.join(USER_DATA_DIR, "tools")
 
 # ---- 外部工具 ----
 _WIN = sys.platform == "win32"
@@ -62,12 +88,12 @@ _OUTDIR_CANDIDATES = (
 )
 OUTDIR_DEFAULT = next((p for p in _OUTDIR_CANDIDATES if os.path.isdir(p)),
                       _OUTDIR_CANDIDATES[-1])
-LOG_DIR = os.path.join(BASE, "logs")
+LOG_DIR = os.path.join(USER_DATA_DIR, "logs")
 LOG_FILE = os.path.join(LOG_DIR, "app.log")
-COOKIES_DIR = os.path.join(BASE, "cookies")
+COOKIES_DIR = os.path.join(USER_DATA_DIR, "cookies")
 COOKIES_BILI = os.path.join(COOKIES_DIR, "bilibili.txt")
 # 抖音专用浏览器配置目录：扫码登录一次，登录态长期保存在这里
-PROFILE_DOUYIN = os.path.join(BASE, "profile_douyin")
+PROFILE_DOUYIN = os.path.join(USER_DATA_DIR, "profile_douyin")
 
 # ---- 代理（自动探测，开源用户端口各不相同）----
 def _detect_proxy():
