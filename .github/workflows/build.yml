@@ -61,7 +61,7 @@ jobs:
       - name: Package release zip
         run: |
           cd dist
-          7z a -tzip "../VideoDownloader-win64.zip" VideoDownloader/*
+          powershell -Command "Compress-Archive -Path 'VideoDownloader\*' -DestinationPath '..\VideoDownloader-win64.zip' -Force"
           cd ..
           ls -lh VideoDownloader-win64.zip
 
