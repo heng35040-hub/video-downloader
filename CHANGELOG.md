@@ -10,8 +10,9 @@
 ### 变更
 - 移除代码中的机器特定路径（本机 Python 安装目录、素材盘等），统一改为
   `tools/` 目录 → PATH → `~/Downloads` 的解析顺序，任何机器开箱即用
-- 移除仓库内的收款二维码图片；打赏入口改为 `config.py` 的 `DONATE_URL`
-  （默认留空，界面不显示任何相关按钮）
+- 移除仓库内的收款二维码图片；打赏入口改为接入爱发电主页
+  （`config.py` 的 `DONATE_URL = https://afdian.com/a/anodev`），
+  README 的「支持作者」段落同步给出链接
 - `build.spec` 的 `CompanyName` 改为中性的 "Video Downloader"
 - CI 统一改用 `requirements.txt` 安装依赖
 

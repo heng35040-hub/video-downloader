@@ -145,7 +145,7 @@ BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 # Fill in your donation page URL (e.g. Afdian, PayPal); a "Support" button
 # appears in the bottom-right of the UI. Empty = completely hidden.
 # Default empty: no nagging, no tracking, fully optional.
-DONATE_URL = ""
+DONATE_URL = "https://afdian.com/a/anodev"
 
 # ---- 画质 ----
 # 对 yt-dlp 平台生效；抖音/快手取页面默认（免登录本来就只有一路/默认一路）
