@@ -1,18 +1,19 @@
 # -*- coding: utf-8 -*-
-"""缺失工具的检测与一键安装。
+"""Missing tool detection and one-click installer.
 
-只从官方渠道下载，且发请求前校验目标：必须 https、域名解析必须是
-公网地址（拒绝内网/环回/保留地址，防止被诱导下载内网内容）。
+Downloads only from official sources; validates targets before requesting:
+HTTPS only, domain must resolve to public IP (rejects private/loopback/reserved
+addresses to prevent SSRF-style internal content download).
 
-- yt-dlp   GitHub 官方 releases（github.com/yt-dlp/yt-dlp）
-- ffmpeg   gyan.dev 构建 —— ffmpeg.org 下载页官方推荐的 Windows 构建源
+- yt-dlp: GitHub official releases (github.com/yt-dlp/yt-dlp)
+- ffmpeg: gyan.dev builds — ffmpeg.org's recommended Windows build source
 
-安全设计：
-- 落盘只走 pathlib 的 write_bytes，目标是「常量目录 + 字面量文件名」，
-  不存在任何动态拼接的路径；
-- zip 在内存中解包，zip 内条目名（不可信输入）只用于匹配，绝不参与
-  路径构造；
-- 工具体积有限（zip 约 80MB、解包后约 200MB），内存中转完全可承受。
+Security design:
+- Files written via pathlib write_bytes to constant dir + literal filenames;
+  no dynamic path construction.
+- Zip extracted in memory; entry names (untrusted) used only for matching,
+  never in path construction.
+- Tool sizes manageable (~80MB zip, ~200MB extracted), in-memory handling OK.
 """
 import contextlib
 import io

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""YouTube / B站 后端 —— 都是驱动 yt-dlp，差别只在代理和 cookies。"""
+"""YouTube / Bilibili backend — both driven by yt-dlp, differing only in proxy and cookies."""
 import json
 import os
 import pathlib

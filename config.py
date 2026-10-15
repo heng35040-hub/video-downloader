@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""全局配置。路径写绝对值，但优先用本机现状、其次 PATH 查找，
-让别人的机器开箱即用（开源友好）。
+"""Global configuration.
 
-从资源管理器双击启动时，进程继承的是「用户 PATH」，和终端里测的未必一样，
-所以 yt-dlp / ffmpeg 先查写死路径再查 PATH，不做纯 PATH 依赖。
+Paths prefer local machine state, then PATH lookup, so other users' machines
+work out of the box. yt-dlp / ffmpeg resolve via hardcoded paths first,
+then PATH — not pure PATH dependency (Explorer-launched processes inherit
+user PATH which may differ from terminal).
 """
 import os
 import re
@@ -121,8 +122,9 @@ BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36")
 
 # ---- 支持作者（自愿）----
-# 填你的爱发电主页 / 收款码页面链接，界面右下角会出现「支持作者」按钮；
-# 留空则完全不显示 —— 开源默认不带任何求赏元素
+# Fill in your donation page URL (e.g. Afdian, PayPal); a "Support" button
+# appears in the bottom-right of the UI. Empty = completely hidden.
+# Default empty: no nagging, no tracking, fully optional.
 DONATE_URL = ""
 
 # ---- 画质 ----

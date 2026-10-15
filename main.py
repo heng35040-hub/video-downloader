@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""视频下载器 —— Tkinter 界面。
+"""视频下载器 —— Tkinter GUI 界面。
 
-线程约定（很重要）：所有耗时工作都在 worker 线程里，worker 只往队列里塞事件，
-绝不碰任何 widget / StringVar。Tkinter 不是线程安全的，违规的表现不是报错，
-而是随机死锁或界面半死不活，很难查。
+Threading contract: all blocking work runs in a worker thread.
+Worker only posts events to a queue; it never touches widgets or StringVars
+(Tkinter is not thread-safe — violations cause random deadlocks, not crashes).
 """
 import datetime
 import logging

@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
-"""快手后端 —— 纯 requests，不用浏览器。
+"""Kuaishou backend — pure requests, no browser.
 
-快手网页端把视频数据直接渲染在页面的 window.__APOLLO_STATE__ 里，
-但游客没有设备 cookie 会被反爬拦截（弹「浏览器版本过低」假页面，
-连有头真 Chrome 都拦 —— 别再往浏览器指纹方向折腾了）。可行的路径是：
-自己造一个 did=web_<随机> 设备 cookie，服务端就会正常吐数据。
-从 JSON 里挖 VisionVideoDetailPhoto 节点拿直链，立刻下载
-（直链有时效，抓到必须马上用）。
+Kuaishou web renders video data in window.__APOLLO_STATE__, but guests
+without device cookies get blocked (fake "browser too old" page — even
+real headed Chrome gets blocked). Working path: forge a did=web_<random>
+device cookie; server then returns normal data. Extract VisionVideoDetailPhoto
+node for direct URL and download immediately (URLs time-limited).
 
-yt-dlp 没有快手提取器，这条路是实测可行的最短路径。
-复用 douyin.py 里的通用件（流式下载、会话、文件名清洗）。
+yt-dlp has no Kuaishou extractor; this is the shortest tested working path.
+Reuses common pieces from douyin.py (stream download, session, filename sanitize).
 """
 import json
 import re

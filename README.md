@@ -147,6 +147,20 @@ config.py      路径与常量
 - 本工具不破解任何 DRM/付费加密；需要登录才能看的内容请先自行登录。
 - 使用本工具产生的一切后果由使用者自行承担，与作者无关。
 
+## 隐私声明
+
+**本工具零遥测、零上报、零账号体系，完全本地化运行。**
+
+| 项目 | 说明 |
+|------|------|
+| **网络请求** | 仅连接：目标视频平台（下载内容）、GitHub/gyan.dev（工具下载）、字节跳动 ttwid 接口（西瓜访客 cookie） |
+| **本地存储** | `cookies/`（B站 cookies）、`profile_douyin/`（抖音登录态）、`logs/`（运行日志）、`tools/`（yt-dlp/ffmpeg） —— 全在程序目录，用户可控可删 |
+| **代理探测** | 仅读 Windows 注册表 + 本地回环 TCP 探测常见端口，**无外网流量** |
+| **自动更新** | 仅每两周从 GitHub 官方 releases 更新 `tools/yt-dlp.exe`，可删 `tools/` 禁用 |
+| **敏感数据** | B站 `SESSDATA`、抖音登录态 **仅本地使用，不上传任何地方** |
+
+详见 [SECURITY.md](SECURITY.md) 完整安全模型说明。
+
 ## License
 
 [MIT](LICENSE)

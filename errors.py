@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""把后端吐出来的原始报错翻成人话。
+"""Translate raw backend errors into user-friendly messages.
 
-用户不需要看 yt-dlp 的 traceback，需要知道「该怎么办」。
+Users don't need yt-dlp tracebacks; they need to know "what to do".
 """
 import re
 

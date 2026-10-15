@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""子进程封装 —— 编码、进度解析、进程树取消。
+"""Subprocess utilities — encoding, progress parsing, process tree termination.
 
-两个 yt-dlp 后端都靠它，而且这里是全项目最容易出错的地方：
-本机 stdout 编码是 gbk、文件系统编码是 utf-8，两者混用就是乱码的来源。
+Two yt-dlp backends depend on this. This is the most error-prone module:
+host stdout encoding is GBK, filesystem encoding is UTF-8; mixing them
+causes mojibake.
 """
 import os
 import re

@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""抖音后端 —— 不走 yt-dlp。
+"""Douyin (TikTok CN) backend — does not use yt-dlp.
 
-抖音有反爬，yt-dlp 抓分享页只会把 HTML 当直链。可行路径是：
-用浏览器打开视频页 → 从网络响应里捞出 CDN 直链 → 立刻下载。
-直链带时间签名（l= / dy_q=），几分钟就失效，所以抓到必须马上用。
+Douyin has anti-scraping; yt-dlp only gets HTML from share pages.
+Viable path: open video page in browser → capture CDN direct URLs from
+network responses → download immediately. URLs carry short-lived signatures
+(l= / dy_q=), expiring in minutes.
 
-Playwright 是懒加载的（在函数内部 import）：导入它要一两秒且依赖浏览器，
-放在模块顶层的话，它一旦出问题会拖垮另外两个平台。
+Playwright is lazy-imported (inside functions): importing it takes 1-2s and
+requires a browser; top-level import would break other platforms if it fails.
 """
 import os
 import re
