@@ -142,9 +142,9 @@ BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36")
 
 # ---- 支持作者（自愿）----
-# Fill in your donation page URL (e.g. Afdian, PayPal); a "Support" button
-# appears in the bottom-right of the UI. Empty = completely hidden.
-# Default empty: no nagging, no tracking, fully optional.
+# Your donation page URL (e.g. Afdian, PayPal); a "Support" button appears
+# in the bottom-right of the UI. Leave it empty to hide the button entirely.
+# No nagging, no tracking, fully optional.
 DONATE_URL = "https://afdian.com/a/anodev"
 
 # ---- 画质 ----
