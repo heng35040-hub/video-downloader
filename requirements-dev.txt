@@ -1,0 +1,8 @@
+# 开发/测试依赖
+#
+#   pip install -r requirements-dev.txt
+#   pytest -q
+
+-r requirements.txt
+
+pytest>=7.4.0

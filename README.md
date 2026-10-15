@@ -51,7 +51,7 @@ Python 3.10 或更新版本，安装时**勾选 "Add python.exe to PATH"**
 ```bat
 git clone https://github.com/heng35040-hub/video-downloader.git
 cd video-downloader
-pip install requests playwright tkinterdnd2
+pip install -r requirements.txt
 playwright install chromium
 ```
 
@@ -68,7 +68,14 @@ python main.py
 手动装这两个工具**。想手动装也可以：`pip install yt-dlp` +
 [winget install Gyan.FFmpeg](https://ffmpeg.org)，加入 PATH 后程序同样能认。
 
-双击启动可参考 `run.bat`（自动找 pythonw.exe 静默启动，可自己建个快捷方式）。
+双击启动可参考 `run.bat`（自动找 py/pythonw 静默启动，可自己建个快捷方式）。
+
+**5. 跑单元测试（可选）**
+
+```bat
+pip install -r requirements-dev.txt
+pytest -q
+```
 
 ## 平台说明
 
@@ -99,13 +106,17 @@ python main.py
 ## 项目结构
 
 ```
-main.py        Tkinter 界面
-backends.py    yt-dlp 驱动（YouTube / B站 / X / Instagram / 小红书 / 微博 / 西瓜 / TikTok）
-douyin.py      抖音（Playwright 抓取 + requests 下载）
-kuaishou.py    快手（纯 requests 解析）
-procutil.py    子进程封装（编码、进度、进程树取消）
-errors.py      报错翻译 + 下载前预检
-config.py      路径与常量
+main.py              Tkinter 界面
+backends.py          yt-dlp 驱动（YouTube / B站 / X / Instagram / 小红书 / 微博 / 西瓜 / TikTok）
+douyin.py            抖音（Playwright 抓取 + requests 下载）
+kuaishou.py          快手（纯 requests 解析）
+procutil.py          子进程封装（编码、进度、进程树取消）
+errors.py            报错翻译 + 下载前预检
+config.py            路径与常量
+conftest.py          pytest 路径配置
+tests/               单元测试（URL 解析、平台识别、报错翻译）
+requirements.txt     运行时依赖
+requirements-dev.txt 开发/测试依赖
 ```
 
 ## 反爬维护（给维护者）
@@ -124,19 +135,23 @@ config.py      路径与常量
 `.github/workflows/smoke.yml` 会在 GitHub Actions 里每周一自动跑一次，
 变红即提示该修了。测试链接被作者删掉时会显示 SKIP，记得定期换新链接。
 
+**单元测试**：`pytest -q` 跑 `tests/` 下的纯逻辑测试（URL 抠取、平台识别、
+报错翻译），不联网、秒级完成；`.github/workflows/tests.yml` 在每次 push /
+PR 时自动执行。改完代码先跑这个，再考虑跑冒烟。
+
 **不要做的事**：不要接验证码打码平台、不要做多线程批量爬取——
 那是法律风险和封禁风险同时陡增的区域，个人工具不需要。
 
 ## 支持作者（自愿）
 
-如果这个工具帮到了你，欢迎请作者喝杯咖啡 —— **完全自愿，不打赏也
-不影响任何功能**：
+本项目保持开源免费，**不设任何打赏、募捐入口** —— 下载、更新与全部
+功能都不受影响。
 
-| 微信 | 支付宝 |
-|---|---|
-| ![微信赞赏码](docs/donate_wechat.jpg) | ![支付宝收款码](docs/donate_alipay.jpg) |
+如果它帮到了你，最好的支持是：给仓库点个 Star、提 Issue 反馈问题、
+或把这个工具分享给需要的人。
 
-> 项目保持开源免费，打赏完全自愿，不影响任何功能。
+> 如需在自建版本中加入打赏入口，可在 `config.py` 中填写 `DONATE_URL`
+> （默认留空，界面不显示任何相关按钮）。仓库内不放置收款二维码。
 
 ## 免责声明
 

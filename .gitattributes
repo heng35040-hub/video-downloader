@@ -1,0 +1,13 @@
+# 统一在仓库中以 LF 存储，工作区按平台检出。
+* text=auto
+
+# Windows 批处理必须以 CRLF 检出，否则 cmd.exe 解析可能出错。
+*.bat text eol=crlf
+
+# 二进制文件不做行尾转换。
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.ico binary
+*.exe binary
+*.zip binary

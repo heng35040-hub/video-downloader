@@ -26,7 +26,7 @@ jobs:
 
       - name: 安装依赖
         run: |
-          pip install requests playwright tkinterdnd2 yt-dlp
+          pip install -r requirements.txt yt-dlp
           playwright install chromium
 
       # 用一键安装器装 ffmpeg —— 顺便每次都在真实环境验证安装器本身没坏

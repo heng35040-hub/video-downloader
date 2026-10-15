@@ -1,0 +1,88 @@
+name: Bug 报告
+description: 下载失败、程序崩溃、界面异常等问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请尽量填全下面的信息，尤其是**日志** —— 它能大幅加快定位速度。
+        报错前可以先试 `run_debug.bat`（带控制台启动），错误会直接显示出来。
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 涉及平台
+      description: 出问题的是哪个平台？与平台无关（界面/安装）请选最后一项。
+      options:
+        - YouTube
+        - B站
+        - 抖音
+        - X (Twitter)
+        - Instagram
+        - 快手
+        - 小红书
+        - 微博
+        - 西瓜视频
+        - TikTok
+        - 程序本身（与平台无关）
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 现象描述
+      description: 你期望发生什么？实际发生了什么？
+      placeholder: 期望下载成功，实际卡在「解析中」然后报错……
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 复制链接 https://...
+        2. 拖进抖音格子
+        3. 点「下载」
+        4. 报错 xxx
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志
+      description: 请粘贴 `logs/app.log` 的末尾内容，或用 `run_debug.bat` 启动后复制控制台输出
+      render: text
+      placeholder: |
+        粘贴日志……
+    validations:
+      required: true
+
+  - type: input
+    id: link
+    attributes:
+      label: 出问题的链接（可选）
+      description: 公开链接请直接贴出；涉及隐私的内容可以省略
+      placeholder: https://...
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: 程序版本（可选）
+      description: 见 `CHANGELOG.md` 顶部，或 exe 文件属性
+      placeholder: "2026.10.15"
+    validations:
+      required: false
+
+  - type: input
+    id: env
+    attributes:
+      label: 运行环境（可选）
+      placeholder: "Windows 11 23H2 / Python 3.12 / Clash Verge"
+    validations:
+      required: false

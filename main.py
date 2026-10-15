@@ -312,8 +312,9 @@ class App:
                            bg=PANE_ACTIVE if source == self.active else PANE_IDLE)
 
     def _browse(self):
-        path = filedialog.askdirectory(title="选择保存位置",
-                                       initialdir=self.outdir_var.get() or "./")
+        path = filedialog.askdirectory(
+            title="选择保存位置",
+            initialdir=self.outdir_var.get() or os.path.expanduser("~"))
         if path:
             self.outdir_var.set(os.path.normpath(path))
 

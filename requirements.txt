@@ -1,0 +1,12 @@
+# 运行时依赖 —— 需要 Python 3.10+（tkinter 由 Windows 版 Python 自带）
+#
+#   pip install -r requirements.txt
+#   playwright install chromium      # 抖音模块需要
+#
+# 注意：yt-dlp 与 ffmpeg 不需要 pip 安装。程序首次启动会从官方源
+# （GitHub Releases / gyan.dev）一键下载到 tools/ 目录，也可以自行
+# 安装并确保它们在 PATH 中。
+
+requests>=2.31.0
+playwright>=1.40.0
+tkinterdnd2>=0.3.0

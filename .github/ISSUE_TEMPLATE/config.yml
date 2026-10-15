@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用问题请先看 README
+    url: https://github.com/heng35040-hub/video-downloader#readme
+    about: 安装步骤、代理配置、各平台支持情况与常见报错都写在 README 里。
+  - name: 安全问题请私下报告
+    url: https://github.com/heng35040-hub/video-downloader/blob/main/SECURITY.md
+    about: 请勿在公开 Issue 中披露安全漏洞，按 SECURITY.md 的方式联系维护者。

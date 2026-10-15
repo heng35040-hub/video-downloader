@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """Global configuration.
 
-Paths prefer local machine state, then PATH lookup, so other users' machines
-work out of the box. yt-dlp / ffmpeg resolve via hardcoded paths first,
-then PATH — not pure PATH dependency (Explorer-launched processes inherit
-user PATH which may differ from terminal).
+Paths prefer the app's own tools/ directory, then PATH lookup, so the app
+works out of the box on any machine. yt-dlp / ffmpeg resolve via the managed
+tools/ directory first, then PATH (Explorer-launched processes inherit user
+PATH which may differ from terminal).
 
 When frozen (PyInstaller), BASE points to the executable directory.
 Writable directories (logs, cookies, profiles, tools) are redirected to
@@ -56,15 +56,14 @@ def _tool(name, *candidates):
 
 
 def _ytdlp_candidates():
-    return (r"yt-dlp.exe",
-            os.path.join(TOOLS_DIR, "yt-dlp.exe"))
+    return (os.path.join(TOOLS_DIR, "yt-dlp.exe"),)
 
 
 YTDLP = _tool("yt-dlp.exe" if _WIN else "yt-dlp", *_ytdlp_candidates())
 
 
 def _ffmpeg_dir():
-    for cand in (r"Scripts", TOOLS_DIR, os.path.dirname(YTDLP)):
+    for cand in (TOOLS_DIR, os.path.dirname(YTDLP)):
         if cand and os.path.isfile(
                 os.path.join(cand, "ffmpeg.exe" if _WIN else "ffmpeg")):
             return cand
@@ -81,13 +80,8 @@ def refresh_tool_paths():
     FFMPEG_DIR = _ffmpeg_dir()
 
 # ---- 目录 ----
-# 本机有 Downloads 就用现状；别人的机器落到「下载」文件夹
-_OUTDIR_CANDIDATES = (
-    r"Downloads",
-    os.path.join(os.path.expanduser("~"), "Downloads"),
-)
-OUTDIR_DEFAULT = next((p for p in _OUTDIR_CANDIDATES if os.path.isdir(p)),
-                      _OUTDIR_CANDIDATES[-1])
+# 默认落到系统「下载」文件夹；用户可在界面上自选保存位置
+OUTDIR_DEFAULT = os.path.join(os.path.expanduser("~"), "Downloads")
 LOG_DIR = os.path.join(USER_DATA_DIR, "logs")
 LOG_FILE = os.path.join(LOG_DIR, "app.log")
 COOKIES_DIR = os.path.join(USER_DATA_DIR, "cookies")

@@ -5,6 +5,25 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)（采用日期格式 YYYY.MM.DD）。
 
+## [未发布]
+
+### 变更
+- 移除代码中的机器特定路径（本机 Python 安装目录、素材盘等），统一改为
+  `tools/` 目录 → PATH → `~/Downloads` 的解析顺序，任何机器开箱即用
+- 移除仓库内的收款二维码图片；打赏入口改为 `config.py` 的 `DONATE_URL`
+  （默认留空，界面不显示任何相关按钮）
+- `build.spec` 的 `CompanyName` 改为中性的 "Video Downloader"
+- CI 统一改用 `requirements.txt` 安装依赖
+
+### 新增
+- `requirements.txt` / `requirements-dev.txt` 依赖声明文件
+- `tests/` 单元测试（URL 抠取、平台识别、报错翻译），纯逻辑、不联网
+- `.github/workflows/tests.yml`：push / PR 自动跑 pytest（Python 3.10 / 3.12）
+- `.github/ISSUE_TEMPLATE/`：Bug 报告表单与联系入口
+
+### 安全
+- 重写 git 历史，彻底清除历史提交中残留的本机路径文件
+
 ## [2026.10.15] - 2026-10-15
 
 ### 新增

@@ -114,7 +114,7 @@ ver_info = versioninfo.VSVersionInfo(
                 versioninfo.StringTable(
                     "040904B0",
                     [
-                        versioninfo.StringStruct("CompanyName", "heng35040-hub"),
+                        versioninfo.StringStruct("CompanyName", "Video Downloader"),
                         versioninfo.StringStruct("FileDescription", "Video Downloader"),
                         versioninfo.StringStruct("FileVersion", "2026.10.15.0"),
                         versioninfo.StringStruct("InternalName", "VideoDownloader"),

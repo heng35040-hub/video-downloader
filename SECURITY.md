@@ -16,7 +16,7 @@
 
 | 数据类型 | 存储位置 | 说明 |
 |----------|----------|------|
-| 下载文件 | 用户自选目录（默认 `~/Downloads` 或 `Downloads`） | 完全用户可控 |
+| 下载文件 | 用户自选目录（默认 `~/Downloads`） | 完全用户可控 |
 | B站 cookies | `cookies/bilibili.txt` (Netscape 格式) | 仅在用户勾选"使用登录信息"且手动导入时产生 |
 | 抖音登录态 | `profile_douyin/` (Chromium 持久化 profile) | 首次扫码登录后自动生成，后续免登录复用 |
 | 西瓜访客 cookie | `cookies/ixigua.txt` | 自动注册 `ttwid`，7 天过期自动刷新 |

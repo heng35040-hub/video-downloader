@@ -8,6 +8,9 @@ logs/
 __pycache__/
 *.pyc
 *.part
+dist/
+build/
+.pytest_cache/
 
 # 本机个性化
 *.lnk
