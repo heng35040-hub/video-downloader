@@ -5,11 +5,22 @@ Threading contract: all blocking work runs in a worker thread.
 Worker only posts events to a queue; it never touches widgets or StringVars
 (Tkinter is not thread-safe — violations cause random deadlocks, not crashes).
 """
+import os
+import sys
+import time
+
+# ---------------------------------------------------------------------------
+# 启动耗时锚点（仅 --selftest 使用，正常运行时无副作用）。
+# _MEIPASS 的创建时刻 ≈ 引导程序解压完成时刻，用它把「引导程序解压」
+# 和「模块导入」分开报告，方便定位打包后启动慢到底慢在哪一段。
+# ---------------------------------------------------------------------------
+_T_BOOT = time.time()
+_T_MEIPASS_CTIME = (os.path.getctime(sys._MEIPASS)
+                    if getattr(sys, "_MEIPASS", None) else None)
+
 import datetime
 import logging
-import os
 import queue
-import sys
 import threading
 import traceback
 from logging.handlers import RotatingFileHandler
@@ -733,7 +744,7 @@ def _selftest(argv):
     import tempfile
     import time as _time
 
-    t_start = _time.time()
+    t_selftest = _time.time()
     lines = []
     ok = True
 
@@ -777,7 +788,11 @@ def _selftest(argv):
         f"user data: {config.USER_DATA_DIR}",
         f"yt-dlp: {config.YTDLP}",
         f"ffmpeg dir: {config.FFMPEG_DIR}",
-        f"解释器内耗时: {(_time.time() - t_start) * 1000:.0f} ms",
+        "--- 启动耗时分解 ---",
+        (f"引导程序解压: {(_T_BOOT - _T_MEIPASS_CTIME) * 1000:.0f} ms"
+         if _T_MEIPASS_CTIME else "引导程序解压: 不适用（未打包）"),
+        f"模块导入: {(t_selftest - _T_BOOT) * 1000:.0f} ms",
+        f"自检内部: {(_time.time() - t_selftest) * 1000:.0f} ms",
         f"RESULT: {'PASS' if ok else 'FAIL'}",
     ]
     text = "\n".join(lines) + "\n"

@@ -13,11 +13,11 @@
 - 移除仓库内的收款二维码图片；打赏入口改为接入爱发电主页
   （`config.py` 的 `DONATE_URL = https://afdian.com/a/anodev`），
   README 的「支持作者」段落同步给出链接
-- **打包改为双形态**：`build.spec` 支持 onefile / onedir，用环境变量
-  `VD_BUILD_MODE` 切换。Release 主推 onedir 的 `VideoDownloader-win64.zip`
-  （解压后双击，启动 1–3 秒），同时保留单文件 `VideoDownloader.exe` 作备选。
-  实测（Win11 + Defender）onefile 每次启动都要解压约 1200 个文件并被杀软
-  逐个扫描，约 35 秒，不适合作为主推形态
+- **保持单文件发布形态（onefile）**：`dist/VideoDownloader.exe` 双击即用、
+  无需解压。全新构建后连跑实测启动稳定在 3–5 秒（引导程序解压 1.2–1.8 秒、
+  模块导入 0.03 秒）。期间曾观测到每次启动约 35 秒，复测确认是**环境性的**
+  （那段时间网络不稳，Defender 云查杀卡住每次启动），并非 onefile 的固有代价，
+  因此不做形态改动
 - **抖音改用系统自带的 Edge / Chrome**（`douyin.py` 的 `_BROWSER_CHANNELS`，
   依次回退 msedge → chrome → chromium → 默认）：不再要求用户下载约 150MB
   的 chromium，包体积更小；浏览器启动失败时给出普通用户可执行的中文提示
@@ -30,15 +30,18 @@
 - `.github/workflows/tests.yml`：push / PR 自动跑 pytest（Python 3.10 / 3.12）
 - `.github/ISSUE_TEMPLATE/`：Bug 报告表单与联系入口
 - `main.py --selftest`：冻结产物无界面自检（Playwright 驱动、tkinterdnd2
-  原生库、requests、分段耗时），CI 在两种形态构建后执行，防止
-  「构建成功但运行缺文件」
-- Release 同时提供 zip 与单文件 exe 两种形态
+  原生库、requests，并给出「引导程序解压 / 模块导入 / 自检内部」分段耗时），
+  CI 在构建后执行，防止「构建成功但运行缺文件」；用户反馈启动慢时也靠它定位
 
 ### 修复
 - `build.spec` 的 `excludes` 不再排除 `email` / `http` / `xml` / `html` /
   `dataclasses` / `configparser` 等标准库 —— 它们是 `requests` 的运行时依赖
   （`email.utils`、`email.parser`、`http.client`、`http.cookiejar`），排除后
   打包版「一键下载 yt-dlp/ffmpeg」与抖音/快手下载会在运行时 `ImportError`
+- `build.spec` 移除多余的 `collect_all("playwright")`：Playwright **自带**
+  官方 PyInstaller hook（entry point `pyinstaller40`，内容即
+  `collect_data_files("playwright")`），已会自动收集 node 驱动；
+  重复收集只让归档多出 77 个冗余条目
 - 移除 CI 中无效的 `playwright install chromium`（浏览器不会被打进包，
   只落在 runner 本机）
 - README / Release 文案修正：onefile 的启动延迟是**每次**启动，而非仅首次

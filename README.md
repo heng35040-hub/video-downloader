@@ -25,7 +25,7 @@
 ## 环境要求
 
 - Windows 10/11
-- 直接使用 Releases 中的 zip 或 exe：无需安装 Python、yt-dlp 或 ffmpeg；首次运行可在弹窗中一键下载所需组件
+- 直接使用 Releases 中的 exe：无需安装 Python、yt-dlp 或 ffmpeg；首次运行可在弹窗中一键下载所需组件
 - 从源码运行：Python 3.10+（含 tkinter）
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) 和 [ffmpeg](https://ffmpeg.org)（源码运行时需自行安装；打包版首次运行可一键下载）
 - **抖音功能**使用系统自带的 Microsoft Edge 或 Google Chrome 驱动浏览器
@@ -43,20 +43,15 @@
 
 ## 安装
 
-**方式一：下载 zip（推荐，不需要 Python 环境）**
+**方式一：直接下载 exe（推荐，不需要 Python 环境）**
 
-到 [GitHub 最新版下载页](https://github.com/heng35040-hub/video-downloader/releases/latest) 下载 `VideoDownloader-win64.zip`，
-解压后双击文件夹里的 `VideoDownloader.exe` 即可 —— 不需要装 Python、
-不需要配环境变量，**启动约 1–3 秒**。
+到 [GitHub 最新版下载页](https://github.com/heng35040-hub/video-downloader/releases/latest) 下载 `VideoDownloader.exe`，
+**双击即用** —— 不需要装 Python、不需要解压、不需要配环境变量。
 
-**方式二：下载单文件 exe（不用解压，但启动慢）**
+> 单文件程序**每次**启动时，引导程序都要先把自身内容解压到临时目录，
+> 实测约 3–5 秒（不只是第一次），这是正常现象。
 
-同一个下载页里的 `VideoDownloader.exe` 是单文件版，双击即用、不用解压。
-代价是它每次启动都要先把自身约 1200 个文件解压到临时目录，并被杀软逐个
-扫描，**实测每次启动约 35 秒**，被杀软误报的概率也更高。两种形态功能完全
-相同，只有「启动速度 vs 是否需要解压」的取舍。
-
-**方式三：从源码运行**
+**方式二：从源码运行**
 
 **1. 安装 Python**
 
@@ -134,7 +129,7 @@ procutil.py          子进程封装（编码、进度、进程树取消）
 errors.py            报错翻译 + 下载前预检
 config.py            路径与常量
 conftest.py          pytest 路径配置
-build.spec           PyInstaller 打包配置（onefile / onedir 两种形态）
+build.spec           PyInstaller 打包配置（单文件 onefile）
 tests/               单元测试（URL 解析、平台识别、报错翻译）
 requirements.txt     运行时依赖
 requirements-dev.txt 开发/测试依赖
@@ -160,16 +155,17 @@ requirements-dev.txt 开发/测试依赖
 报错翻译），不联网、秒级完成；`.github/workflows/tests.yml` 在每次 push /
 PR 时自动执行。改完代码先跑这个，再考虑跑冒烟。
 
-**打包**：`build.spec` 支持两种形态，用环境变量 `VD_BUILD_MODE` 切换 ——
-默认 `onefile`（产物 `dist\VideoDownloader.exe` 单文件），
-`VD_BUILD_MODE=onedir` 则产出 `dist\VideoDownloader\` 文件夹。
-Release 两种都发：zip（onedir）启动 1–3 秒，是主推；单文件 exe 启动约 35 秒，作备选。
+**打包**：`pyinstaller --clean build.spec` 产出单文件 `dist\VideoDownloader.exe`。
+spec 里不能出现 `COLLECT`，否则会退回 onedir（一整个文件夹）。
+Playwright 自带 PyInstaller hook，会把 node 驱动自动收进包，无需手写 `collect_all`；
+抖音用的浏览器走系统自带 Edge/Chrome，不打包 chromium。
 
-**打包自检**：`--selftest` 会无界面跑一遍启动自检，确认 Playwright 驱动、
-tkinterdnd2 原生库、requests 都真的打进了包，结果写入
+**打包自检**：`dist\VideoDownloader.exe --selftest` 会无界面跑一遍启动自检，
+确认 Playwright 驱动、tkinterdnd2 原生库、requests 都真的打进了包，并给出
+「引导程序解压 / 模块导入 / 自检内部」三段耗时；结果写入
 `%TEMP%\VideoDownloader-selftest.txt`，退出码 0 表示通过。
-`.github/workflows/build.yml` 在两种形态构建后都会执行这一步 ——
-PyInstaller 漏收文件时构建照样「成功」，只有这个自检能暴露问题。
+`.github/workflows/build.yml` 在构建后会执行这一步 —— PyInstaller 漏收文件时
+构建照样「成功」，只有这个自检能暴露问题；用户反馈启动慢时也靠它定位。
 
 **不要做的事**：不要接验证码打码平台、不要做多线程批量爬取——
 那是法律风险和封禁风险同时陡增的区域，个人工具不需要。

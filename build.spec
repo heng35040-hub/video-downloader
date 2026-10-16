@@ -4,7 +4,6 @@
 
 import os
 import sys
-from PyInstaller.utils.hooks import collect_all
 from PyInstaller.utils.win32 import versioninfo
 
 # Get the project root directory (spec file location)
@@ -47,15 +46,17 @@ hiddenimports = [
 ]
 
 # ---- Playwright ----
-# Playwright 没有官方 PyInstaller hook（pyinstaller-hooks-contrib 里没有它，
-# 只有 tkinterdnd2 有），不手动收集的话冻结后 sync_playwright() 会报
-# "Driver not found"。collect_all 会把 playwright/driver（node.exe + JS 实现，
-# 约 100MB）一并收进来。
+# Playwright **自带** PyInstaller hook（通过 entry point `pyinstaller40` 注册，
+# 内容就是 collect_data_files("playwright")）。只要静态分析能扫到
+# `playwright.sync_api` 的导入（douyin.py 里是函数内懒导入，照样能扫到），
+# playwright/driver（node.exe + JS 实现，约 100MB）就会自动进包，
+# 冻结后 sync_playwright() 才能正常拉起驱动。
 #
-# 注意：这里只收 Playwright 的「驱动」，不收浏览器本体。抖音默认直接用系统
-# 自带的 Edge/Chrome（见 douyin.py 的 _BROWSER_CHANNELS），所以不需要额外
-# 下载约 150MB 的 chromium。
-_pw_datas, _pw_binaries, _pw_hiddenimports = collect_all("playwright")
+# 所以这里不需要再手写 collect_all —— 重复收集只会让归档多一份无用条目。
+# 早期版本误以为没有官方 hook 而手动收集过，已移除。
+#
+# 注意：进包的只有「驱动」，不含浏览器本体。抖音默认直接用系统自带的
+# Edge/Chrome（见 douyin.py 的 _BROWSER_CHANNELS），无需下载约 150MB 的 chromium。
 
 # Data files to include: (source, destination_in_package)
 # Cookies are user data and must never be bundled; config.py stores them in
@@ -65,12 +66,10 @@ datas = [
     (os.path.join(PROJECT_ROOT, "README.md"), "."),
     (os.path.join(PROJECT_ROOT, "LICENSE"), "."),
     (os.path.join(PROJECT_ROOT, "SECURITY.md"), "."),
-] + _pw_datas
+]
 
 # Binary files: (source, destination)
-binaries = list(_pw_binaries)
-
-hiddenimports += _pw_hiddenimports
+binaries = []
 
 # Exclude unnecessary modules to reduce size
 #
@@ -162,26 +161,27 @@ a.binaries = [x for x in a.binaries if not x[0].endswith(".pdb")]
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 # ---------------------------------------------------------------------------
-# 打包形态由环境变量 VD_BUILD_MODE 决定（默认 onefile）
+# 单文件模式（onefile）：产物是 dist/VideoDownloader.exe 一个文件，双击即用，
+# 不需要解压、不需要找文件夹 —— 这是面向用户的唯一发布形态。
 #
-#   VD_BUILD_MODE=onefile  -> dist/VideoDownloader.exe               单一文件
-#   VD_BUILD_MODE=onedir   -> dist/VideoDownloader/VideoDownloader.exe  文件夹
+# 关键点：spec 里**不能**出现 COLLECT。PyInstaller 见到 COLLECT 就会切到
+# onedir（产出一整个文件夹），新手下载后还得自己找 exe。
 #
-# 为什么两种都要有（本机实测，Windows 11 + Defender 实时防护开启）：
-#   - onefile 每次启动都要把包内约 1200 个文件解压到临时目录，并被杀软
-#     逐个扫描，实测启动约 35 秒（对比极简 onefile 基线 2.3 秒）；
-#   - onedir 只需解压一次，启动 1–3 秒。
-#   所以 Release 以 onedir 的 zip 为主推，单文件 exe 作为「不想解压」的备选。
+# 代价：引导程序每次启动都要把包内约 1200 个文件解压到临时目录。本机实测
+# （Win11 + Defender）全新构建后连跑 5 次，启动稳定在 4.0–4.6 秒，其中
+# 解压约 1.8 秒、模块导入约 0.03 秒；对照 onedir 约 1.2 秒。
 #
-# 用法：
-#   pyinstaller --clean build.spec                      # 单文件
-#   set VD_BUILD_MODE=onedir && pyinstaller --clean build.spec
+# 注意：曾经观测到每次启动约 35 秒，事后确认是**环境性的**（那段时间网络
+# 不稳，Defender 云查杀卡住每次启动），并非 onefile 的固有代价，已复测排除。
+# 如果将来有用户反馈启动异常慢，多半也是杀软/网络，而不是包本身。
 # ---------------------------------------------------------------------------
-MODE = os.environ.get("VD_BUILD_MODE", "onefile").strip().lower()
-if MODE not in ("onefile", "onedir"):
-    raise SystemExit(f"未知的 VD_BUILD_MODE: {MODE!r}（只支持 onefile / onedir）")
-
-_exe_kwargs = dict(
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    [],
     name="VideoDownloader",
     debug=False,
     bootloader_ignore_signals=False,
@@ -198,22 +198,4 @@ _exe_kwargs = dict(
     icon=icon_path,
     version=ver_info,
 )
-
-if MODE == "onedir":
-    # 注意：onedir 必须有 COLLECT；exclude_binaries=True 让依赖交给 COLLECT 收。
-    exe = EXE(pyz, a.scripts, [], exclude_binaries=True, **_exe_kwargs)
-    coll = COLLECT(
-        exe,
-        a.binaries,
-        a.zipfiles,
-        a.datas,
-        strip=False,
-        upx=True,
-        upx_exclude=[],
-        name="VideoDownloader",
-    )
-else:
-    # onefile：这里绝不能出现 COLLECT，否则会退回 onedir。
-    exe = EXE(pyz, a.scripts, a.binaries, a.zipfiles, a.datas, [],
-              **_exe_kwargs)
 
