@@ -5,7 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)（采用日期格式 YYYY.MM.DD）。
 
-## [未发布]
+## [2026.10.16.1] - 2026-10-16
+
+> 这一版是 `v2026.10.16` 的修正发布：exe 里嵌的版本号此前漏改（还是
+> 2026.10.15.0），且该版本发布时还没包含内置 yt-dlp、ffmpeg 多源等改动。
+> 见 [v2026.10.16](https://github.com/heng35040-hub/video-downloader/releases/tag/v2026.10.16)
+> 与本版的变更明细。
 
 ### 变更
 - **yt-dlp 改为内置**：不再依赖首次启动从 GitHub 下载。国内直连 GitHub 的

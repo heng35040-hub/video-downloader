@@ -107,10 +107,13 @@ main_script = os.path.join(PROJECT_ROOT, "main.py")
 icon_path = None
 
 # Version info for Windows
+# ⚠️ 每次发版都要同步更新这里（外加 CHANGELOG 和 tag 名），
+#    否则 exe 属性里显示的「文件版本」会和实际发布版本对不上。
+#    曾经就因为漏改，v2026.10.16 的 exe 里嵌的还是 2026.10.15.0。
 ver_info = versioninfo.VSVersionInfo(
     ffi=versioninfo.FixedFileInfo(
-        filevers=(2026, 10, 15, 0),
-        prodvers=(2026, 10, 15, 0),
+        filevers=(2026, 10, 16, 1),
+        prodvers=(2026, 10, 16, 1),
         mask=0x3F,
         flags=0,
         OS=0x40004,
@@ -126,12 +129,12 @@ ver_info = versioninfo.VSVersionInfo(
                     [
                         versioninfo.StringStruct("CompanyName", "Video Downloader"),
                         versioninfo.StringStruct("FileDescription", "Video Downloader"),
-                        versioninfo.StringStruct("FileVersion", "2026.10.15.0"),
+                        versioninfo.StringStruct("FileVersion", "2026.10.16.1"),
                         versioninfo.StringStruct("InternalName", "VideoDownloader"),
                         versioninfo.StringStruct("LegalCopyright", "MIT License"),
                         versioninfo.StringStruct("OriginalFilename", "VideoDownloader.exe"),
                         versioninfo.StringStruct("ProductName", "Video Downloader"),
-                        versioninfo.StringStruct("ProductVersion", "2026.10.15.0"),
+                        versioninfo.StringStruct("ProductVersion", "2026.10.16.1"),
                     ],
                 ),
             ],
