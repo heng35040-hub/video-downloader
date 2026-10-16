@@ -21,7 +21,7 @@
 | 抖音登录态 | `profile_douyin/` (Chromium 持久化 profile) | 首次扫码登录后自动生成，后续免登录复用 |
 | 西瓜访客 cookie | `cookies/ixigua.txt` | 自动注册 `ttwid`，7 天过期自动刷新 |
 | 应用日志 | `logs/app.log` (滚动 512KB × 2) | 仅记录程序运行信息，不含敏感数据 |
-| 工具缓存 | `tools/` (yt-dlp.exe, ffmpeg.exe) | 一键安装/自更新产生，用户可随时删除 |
+| 工具缓存 | `tools/` (ffmpeg.exe，以及可选的 yt-dlp.exe 副本) | 一键安装/自更新产生，用户可随时删除 |
 
 > **建议**：如需迁移/备份/清理，直接复制/删除上述目录即可。无隐藏注册表项、无系统级安装痕迹。
 
@@ -42,8 +42,8 @@
 ### 3. 工具下载/更新（toolssetup.py）
 | 来源 | 用途 | 频率 |
 |------|------|------|
-| `github.com/yt-dlp/yt-dlp/releases` | yt-dlp 单文件可执行程序 | 首次缺失 + 每两周自更新 |
 | `www.gyan.dev/ffmpeg/builds/` | ffmpeg/ffprobe (zip) | 首次缺失 |
+| `github.com/yt-dlp/yt-dlp/releases` | yt-dlp 单文件可执行程序 | **仅当 `tools/yt-dlp.exe` 已存在时**每两周自更新；首次安装不需要（yt-dlp 已内置在程序里） |
 
 **安全闸**：
 - 仅允许 HTTPS
@@ -86,7 +86,7 @@
 - 只提取 `bin/ffmpeg.exe` 和 `bin/ffprobe.exe`（官方包固定结构）
 
 ### 完整性
-- yt-dlp：GitHub Releases 官方单文件，无签名验证（GitHub TLS 传输信任链）
+- yt-dlp：**内置在程序里**（PyPI 官方包，随 exe 分发）；仅当 `tools/yt-dlp.exe` 已存在时才从 GitHub Releases 自更新，无签名验证（GitHub TLS 传输信任链）
 - ffmpeg：gyan.dev 官方推荐源，zip 内文件名固定匹配
 
 ---
@@ -112,7 +112,7 @@
 
 - [x] 无用户数据收集
 - [x] 无第三方追踪器
-- [x] 无自动更新可执行代码（仅 yt-dlp 官方单文件，可禁用）
+- [x] 无自动更新可执行代码（yt-dlp 已内置；仅对用户已有的 `tools/yt-dlp.exe` 做官方 `-U` 自更新，可禁用）
 - [x] 无远程代码执行向量
 - [x] 无路径穿越风险
 - [x] 无 SSRF 风险（公网 IP 校验）
@@ -126,7 +126,7 @@
 1. **使用代理**：下载被墙平台内容时，确保代理软件（Clash/V2Ray 等）已启动并正确分流。
 2. **保护 cookies**：`cookies/bilibili.txt` 包含 `SESSDATA` 等敏感字段，**请勿分享/上传**。
 3. **物理隔离**：`profile_douyin/` 存储抖音登录态，如电脑共用，建议使用独立用户账号或定期清理。
-4. **验证下载**：工具从官方源下载 yt-dlp/ffmpeg，若极度在意供应链，可手动安装并加入 PATH，程序会优先使用系统版本。
+4. **验证下载**：ffmpeg 从官方源（gyan.dev）下载；若极度在意供应链，可手动安装并加入 PATH，程序会优先使用系统版本。yt-dlp 已内置在程序里，不经过任何下载环节。
 
 ---
 

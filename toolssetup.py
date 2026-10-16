@@ -5,8 +5,10 @@ Downloads only from official sources; validates targets before requesting:
 HTTPS only, domain must resolve to public IP (rejects private/loopback/reserved
 addresses to prevent SSRF-style internal content download).
 
-- yt-dlp: GitHub official releases (github.com/yt-dlp/yt-dlp)
 - ffmpeg: gyan.dev builds — ffmpeg.org's recommended Windows build source
+- yt-dlp: GitHub official releases (github.com/yt-dlp/yt-dlp) —— 只在「内置的
+  yt_dlp 模块加载失败」或「自装副本需要更新」时才用；正常情况下 yt-dlp 已经
+  随程序内置，首次启动不需要联网下载它（见 config.YTDLP_CMD）。
 
 Security design:
 - Files written via pathlib write_bytes to constant dir + literal filenames;
@@ -44,7 +46,7 @@ _ZIP_MEMBER_RE = re.compile(r"(^|[\\/])bin[\\/](ffmpeg|ffprobe)\.exe$", re.I)
 _TOOLS_INFO = {
     "ytdlp": {
         "name": "yt-dlp",
-        "desc": "视频解析与下载核心（开源命令行工具，GitHub 最流行的下载器之一）",
+        "desc": "视频解析与下载核心（已内置在程序里，这里是一键下载的兜底）",
         "source": "github.com/yt-dlp/yt-dlp 官方发布",
     },
     "ffmpeg": {
@@ -69,9 +71,13 @@ def human(n):
 
 
 def missing_tools():
-    """返回缺失工具的信息列表，全齐返回 []。"""
+    """返回缺失工具的信息列表，全齐返回 []。
+
+    yt-dlp 已内置（见 config.YTDLP_CMD），正常不再算「缺失」——
+    只有内置模块加载失败时才会列出来，让用户走一键下载兜底。
+    """
     out = []
-    if not os.path.isfile(config.YTDLP) and not shutil.which("yt-dlp"):
+    if not config.ytdlp_available():
         out.append({**_TOOLS_INFO["ytdlp"], "key": "ytdlp"})
     has_ffmpeg = any(
         os.path.isfile(os.path.join(config.FFMPEG_DIR, n))
@@ -208,6 +214,12 @@ def install_tool(key, progress_cb, should_cancel=lambda: False):
 # ---- 后续更新 ----
 # yt-dlp 是更新最勤的一环（YouTube 一改版就得跟），官方 exe 自带 -U
 # 自更新能力。ffmpeg 几年才一动，不做自动更新。
+#
+# 注意：yt-dlp 现在是**内置**的（见 config.YTDLP_CMD），所以这里只负责
+# 「已经存在 tools\yt-dlp.exe 自装副本」的情况。全新安装的用户用的是随包
+# 内置的那份，它跟着程序版本走 —— 想升级 yt-dlp 就下载新版程序。
+# 只有当 tools\yt-dlp.exe 存在（用户手动装的，或以前下载过）时才会自动更新，
+# 更新后它会优先于内置副本被使用。
 
 _SELFUPDATE_INTERVAL = 14 * 24 * 3600      # 每两周尝试一次
 
@@ -244,7 +256,9 @@ def maybe_self_update_ytdlp():
         return
     if time.time() - _YTDLP_EXE.stat().st_mtime < _SELFUPDATE_INTERVAL:
         return
-    if os.path.realpath(config.YTDLP) != os.path.realpath(str(_YTDLP_EXE)):
+    if not config.YTDLP_CMD:
+        return
+    if os.path.realpath(config.YTDLP_CMD[0]) != os.path.realpath(str(_YTDLP_EXE)):
         return                      # 当前生效的不是自装副本
     try:
         ok, text = _run_selfupdate(False)

@@ -47,25 +47,65 @@ TOOLS_DIR = os.path.join(USER_DATA_DIR, "tools")
 _WIN = sys.platform == "win32"
 
 
-def _tool(name, *candidates):
-    """按候选顺序找第一个真实存在的路径；都没有就退回 PATH 查找。"""
-    for c in candidates:
-        if c and os.path.isfile(c):
-            return c
-    return shutil.which(name) or (candidates[-1] if candidates else name)
+# ---- yt-dlp ----
+# yt-dlp 直接内置（打包进 exe / 装在依赖里），首次启动不再需要联网下载。
+# 命令行用**列表**表示，好让内置模块和外置 exe 互换，优先级：
+#
+#   1) tools\yt-dlp.exe —— 用户自己装的，或自动更新下来的（能保持最新）
+#   2) 内置 yt_dlp 模块 —— 冻结时是「exe 自己再调用自己」，
+#      见 main.py 顶部的 --ytdlp-cli 分发
+#   3) PATH 里的 yt-dlp —— 兜底
+YTDLP_CLI_FLAG = "--ytdlp-cli"
+_YTDLP_EXE_NAME = "yt-dlp.exe" if _WIN else "yt-dlp"
 
 
-def _ytdlp_candidates():
-    return (os.path.join(TOOLS_DIR, "yt-dlp.exe"),)
+def _bundled_ytdlp_cmd():
+    """内置 yt_dlp 模块的调用方式；模块不可用则返回 None。"""
+    try:
+        import yt_dlp  # noqa: F401
+    except Exception:
+        return None
+    if getattr(sys, "frozen", False):
+        # 冻结后没有独立的 python 解释器可用，只能让 exe 带旗标再跑一遍自己
+        return [sys.executable, YTDLP_CLI_FLAG]
+    return [sys.executable, "-m", "yt_dlp"]
 
 
-YTDLP = _tool("yt-dlp.exe" if _WIN else "yt-dlp", *_ytdlp_candidates())
+def _resolve_ytdlp_cmd():
+    exe = os.path.join(TOOLS_DIR, _YTDLP_EXE_NAME)
+    if os.path.isfile(exe):
+        return [exe]
+    bundled = _bundled_ytdlp_cmd()
+    if bundled:
+        return bundled
+    found = shutil.which(_YTDLP_EXE_NAME)
+    return [found] if found else None
+
+
+YTDLP_CMD = _resolve_ytdlp_cmd()
+
+
+def ytdlp_available():
+    """yt-dlp 是否可用。内置之后几乎恒为 True，留作预检与自检用。"""
+    return bool(YTDLP_CMD)
 
 
 def _ffmpeg_dir():
-    for cand in (TOOLS_DIR, os.path.dirname(YTDLP)):
-        if cand and os.path.isfile(
-                os.path.join(cand, "ffmpeg.exe" if _WIN else "ffmpeg")):
+    """找 ffmpeg 所在目录，顺序：tools\\ → yt-dlp 同目录 → PATH → 兜底。
+
+    这个目录会作为 --ffmpeg-location 传给 yt-dlp：GUI 进程继承的 PATH
+    未必和终端一致，显式给路径最稳，所以这里也主动把 PATH 里的 ffmpeg
+    解析成具体目录。
+    """
+    exe_name = "ffmpeg.exe" if _WIN else "ffmpeg"
+    cands = [TOOLS_DIR]
+    if YTDLP_CMD:
+        cands.append(os.path.dirname(YTDLP_CMD[0]))
+    found = shutil.which(exe_name)
+    if found:
+        cands.append(os.path.dirname(found))
+    for cand in cands:
+        if cand and os.path.isfile(os.path.join(cand, exe_name)):
             return cand
     return TOOLS_DIR if os.path.isdir(TOOLS_DIR) else BASE
 
@@ -75,8 +115,8 @@ FFMPEG_DIR = _ffmpeg_dir()
 
 def refresh_tool_paths():
     """工具装好后重新解析路径，本次运行内立即可用（不用重启）。"""
-    global YTDLP, FFMPEG_DIR
-    YTDLP = _tool("yt-dlp.exe" if _WIN else "yt-dlp", *_ytdlp_candidates())
+    global YTDLP_CMD, FFMPEG_DIR
+    YTDLP_CMD = _resolve_ytdlp_cmd()
     FFMPEG_DIR = _ffmpeg_dir()
 
 # ---- 目录 ----

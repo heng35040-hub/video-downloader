@@ -34,11 +34,15 @@
 
 ## 3. yt-dlp 输出编码处理（backends.py）
 
-**问题**：`yt-dlp.exe` 是打包可执行文件，无视 `PYTHONIOENCODING`，一律按控制台代码页（中文 Windows 通常是 cp936/GBK）写 stdout。直接读中文路径拿到的是 GBK 字节，按 UTF-8 解码会变 `U+FFFD` 乱码。
+**问题**：外置的 `yt-dlp.exe` 是打包可执行文件，无视 `PYTHONIOENCODING`，一律按控制台代码页（中文 Windows 通常是 cp936/GBK）写 stdout。直接读中文路径拿到的是 GBK 字节，按 UTF-8 解码会变 `U+FFFD` 乱码。
 
-**解决**：用 `--print "after_move:%(filepath)j"` —— `%(...)j` 输出 JSON 转义后的纯 ASCII（中文变 `\uXXXX`）。管道里全是 ASCII，无编码烦恼。
+**解决**：用 `--print "after_move:%(filepath)j"` —— `%(...)j` 输出 JSON 转义后的纯 ASCII（中文变 `\uXXXX`）。管道里全是 ASCII，无论内置还是外置都不受编码影响。
 
 **同理**：`--print "video:TITLE %(title)j"` 取标题。
+
+> 内置 yt-dlp 走的是「exe 自调用」子进程（见 §18），
+> `procutil.build_env` 会给它设 `PYTHONUTF8=1`，输出本来就是 UTF-8；
+> 但外置 exe 那条路依然需要 JSON 转义兜底，所以这个约定要保留。
 
 ---
 
@@ -126,6 +130,9 @@ session.cookies.set("didv", str(int(time.time() * 1000)), domain=".kuaishou.com"
 ## 11. yt-dlp 自更新（toolssetup.py `maybe_self_update_ytdlp`）
 
 - 每两周尝试一次（`_SELFUPDATE_INTERVAL = 14 * 24 * 3600`）
+- **只对已存在的 `tools/yt-dlp.exe` 生效**：yt-dlp 现在是内置的（见 §18），
+  全新安装的用户用的是随包那份，它跟着程序版本走；只有当用户手动装过、
+  或以前下载过 `tools/yt-dlp.exe` 时才会自动 `-U` 更新它
 - 只管自装副本：用户 PATH/pip 里自己装的 yt-dlp **不越权代管**
 - 显式 `--proxy ""`（直连）或 `--proxy <addr>`（代理）：yt-dlp 会自己读 Windows 系统代理，实测会拿到过期端口连环境变量里都没有的幽灵代理 —— 空串旗标才是真正的直连
 - 无论成败都 `touch()` mtime，避免每次启动白跑 `-U`
@@ -188,19 +195,53 @@ session.cookies.set("didv", str(int(time.time() * 1000)), domain=".kuaishou.com"
 
 | 平台 | 解析方式 | 易碎点（改这里） |
 |------|----------|-----------------|
-| 抖音 | Playwright 捞 CDN 直链 / 音乐接口 JSON | `douyin.py` 的响应过滤条件与 `_extract_play_urls` |
+| 抖音 | Playwright 捞 CDN 直链 / 音乐接口 JSON | `douyin.py` 的响应过滤条件、`_extract_play_urls` 与 `_BROWSER_CHANNELS` |
 | 快手 | 纯 requests 解析 `__APOLLO_STATE__` | `kuaishou.py` 的 `_parse_detail` 与 `kpn` 参数 |
-| 其余 | yt-dlp | 基本只需保持 yt-dlp 最新（tools\ 里的副本每两周自动 `-U`） |
+| 其余 | yt-dlp（**内置**） | 升级 `requirements.txt` 里的 yt-dlp 版本后重新发版；`tools\yt-dlp.exe` 存在时优先用它 |
 
 ---
 
 ## 17. 依赖版本策略
 
 - **Python 3.10+**（含 tkinter）
-- **yt-dlp**：自动更新，锁定在 `tools/yt-dlp.exe`
+- **yt-dlp**：**内置**（`requirements.txt` 依赖，打包进 exe），随程序版本发布；
+  存在 `tools/yt-dlp.exe` 时优先使用它并每两周自动 `-U`
 - **ffmpeg**：gyan.dev essentials 构建，锁定在 `tools/ffmpeg.exe`
-- **Playwright**：仅抖音/快手用，`playwright install chromium`
+- **Playwright**：仅抖音用；**不需要** `playwright install chromium`，
+  浏览器走系统自带的 Edge/Chrome（`douyin.py` 的 `_BROWSER_CHANNELS`）
 - **requests / tkinterdnd2**：标准库级依赖，版本宽松
+
+---
+
+## 18. 内置 yt-dlp（config.py / main.py `--ytdlp-cli`）
+
+**动机**：yt-dlp 原本靠首次启动从 GitHub Releases 下载。国内直连 GitHub 的
+可达性不稳定，而这个工具的目标用户里，很多人只用 B站/抖音等国内平台、
+并不开代理 —— 一旦下载失败，B站 这类主平台也直接用不了。
+
+**方案**：把 yt-dlp 作为普通 Python 依赖内置，并用「让 exe 自己调用自己」
+的方式复用原有的子进程机制。
+
+`config.YTDLP_CMD` 是一个**命令行列表**，优先级：
+
+1. `tools\yt-dlp.exe`（用户手动装的，或自动更新下来的）
+2. 内置 `yt_dlp` 模块 —— 冻结时是 `[sys.executable, "--ytdlp-cli"]`，
+   开发时是 `[python, "-m", "yt_dlp"]`
+3. PATH 里的 `yt-dlp`
+
+`main.py` 在**所有重活之前**（tkinter、日志、建目录）检查 `--ytdlp-cli`，
+命中就把剩余参数交给 `yt_dlp.main()`。于是 `backends.py` 只是把
+`config.YTDLP` 换成 `*config.YTDLP_CMD`，
+「子进程 + 逐行读 stdout + `taskkill /F /T` 杀进程树取消」全部原样复用。
+
+**几个踩过的点**：
+- 冻结后 `console=False`，但父进程用管道拉起时 stdout 依然可写（实测可用）；
+  输出编码由 `PYTHONUTF8=1` 决定，`procutil.build_env` 已经设了
+- `yt_dlp.main()` 内部用 `sys.exit()` 表达退出码，必须接住 `SystemExit`
+- `yt_dlp` 自带官方 PyInstaller hook（entry point `pyinstaller40`），
+  会收集 1000+ 个 extractor 子模块；包体积 +约 6.5MB，归档条目只多 3 个
+- `--selftest` 里加了一条**真实跑 `--ytdlp-cli --version`** 的检查，
+  漏收模块或分发写错都会在 CI 暴露
 
 ---
 

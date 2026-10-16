@@ -25,16 +25,19 @@
 ## 环境要求
 
 - Windows 10/11
-- 直接使用 Releases 中的 exe：无需安装 Python、yt-dlp 或 ffmpeg；首次运行可在弹窗中一键下载所需组件
+- 直接使用 Releases 中的 exe：无需安装 Python；**yt-dlp 已内置**，
+  首次运行只需在弹窗中一键下载 ffmpeg
 - 从源码运行：Python 3.10+（含 tkinter）
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) 和 [ffmpeg](https://ffmpeg.org)（源码运行时需自行安装；打包版首次运行可一键下载）
+- **yt-dlp 已内置在程序里**（打包进 exe / 由 `requirements.txt` 安装），
+  开箱即用、首次启动**不需要联网下载它**
+- [ffmpeg](https://ffmpeg.org) 仍需单独准备（合并音视频用）：打包版首次运行
+  可一键下载，源码运行可自行安装或让它走 PATH
 - **抖音功能**使用系统自带的 Microsoft Edge 或 Google Chrome 驱动浏览器
   （Windows 10/11 一般自带 Edge），**无需额外下载约 150MB 的 chromium**；
   只有在极精简的系统上两者都没有时，才需要自行安装 Edge/Chrome
 
-  **没有装也没关系**：启动时会弹窗提示缺什么，点「一键下载并配置」
-  即可从官方源自动下载（yt-dlp 来自 GitHub 官方 releases，ffmpeg 来自
-  ffmpeg.org 官方推荐的 gyan.dev 构建源），安装到程序目录 `tools\`
+  **ffmpeg 没装也没关系**：启动时会弹窗提示，点「一键下载并配置」即可从
+  ffmpeg.org 官方推荐的 gyan.dev 构建源自动下载，安装到程序目录 `tools\`
   并立即生效。也可以关闭弹窗自行安装；加入 PATH 后程序能自动找到，
   或在 `config.py` 里手动指定路径
 - 下载被墙平台（YouTube / X / Instagram / TikTok）需要本机代理。
@@ -78,9 +81,9 @@ python main.py
 
 **4. 首次启动：缺什么补什么**
 
-程序启动时会自检 yt-dlp 和 ffmpeg，缺了会弹窗 —— 点「一键下载并配置」
-即自动从官方源下载装好（装进程序目录 `tools\`，立即生效），**不需要
-手动装这两个工具**。想手动装也可以：`pip install yt-dlp` +
+yt-dlp 已经随 `requirements.txt` 装好了，不需要额外处理。程序启动时只会
+自检 ffmpeg，缺了会弹窗 —— 点「一键下载并配置」即自动从官方源下载装好
+（装进程序目录 `tools\`，立即生效）。想手动装也可以：
 [winget install Gyan.FFmpeg](https://ffmpeg.org)，加入 PATH 后程序同样能认。
 
 双击启动可参考 `run.bat`（自动找 py/pythonw 静默启动，可自己建个快捷方式）。
@@ -144,7 +147,7 @@ requirements-dev.txt 开发/测试依赖
 |---|---|---|
 | 抖音 | Playwright 捞 CDN 直链 / 音乐接口 JSON | `douyin.py` 的响应过滤条件、`_extract_play_urls` 与浏览器回退链 `_BROWSER_CHANNELS` |
 | 快手 | 纯 requests 解析 `__APOLLO_STATE__` | `kuaishou.py` 的 `_parse_detail` 与 `kpn` 参数 |
-| 其余 | yt-dlp | 基本只需保持 yt-dlp 最新（tools\ 里的副本每两周自动 `-U`） |
+| 其余 | yt-dlp（**内置**） | 升级 `requirements.txt` 里的 yt-dlp 版本后重新发版；若 `tools\yt-dlp.exe` 存在则优先用它 |
 
 **冒烟测试**：`python smoke_test.py` 对每个平台用固定公开链接走一遍真实
 下载，输出 PASS / SKIP / FAIL。哪个平台悄悄失效一目了然；
@@ -155,13 +158,22 @@ requirements-dev.txt 开发/测试依赖
 报错翻译），不联网、秒级完成；`.github/workflows/tests.yml` 在每次 push /
 PR 时自动执行。改完代码先跑这个，再考虑跑冒烟。
 
+**内置 yt-dlp 的实现方式**：`config.YTDLP_CMD` 是一个**命令行列表**，
+优先级 `tools\yt-dlp.exe` → 内置 `yt_dlp` 模块 → PATH。冻结时内置那份的
+调用方式是 `[本 exe, "--ytdlp-cli", ...]` —— 也就是让程序把自己当成
+yt-dlp 命令行再跑一遍（`main.py` 顶部的分发）。这样
+「子进程 + 逐行读 stdout + 杀进程树取消」这套现成机制一行都不用改。
+改动 yt-dlp 相关代码时注意别破坏这个前缀约定。
+
 **打包**：`pyinstaller --clean build.spec` 产出单文件 `dist\VideoDownloader.exe`。
 spec 里不能出现 `COLLECT`，否则会退回 onedir（一整个文件夹）。
-Playwright 自带 PyInstaller hook，会把 node 驱动自动收进包，无需手写 `collect_all`；
+Playwright 和 yt-dlp 都自带 PyInstaller hook，会各自把 node 驱动 /
+1000+ 个 extractor 收进包，无需手写 `collect_all`；
 抖音用的浏览器走系统自带 Edge/Chrome，不打包 chromium。
 
 **打包自检**：`dist\VideoDownloader.exe --selftest` 会无界面跑一遍启动自检，
-确认 Playwright 驱动、tkinterdnd2 原生库、requests 都真的打进了包，并给出
+确认 Playwright 驱动、tkinterdnd2 原生库、requests、**内置 yt-dlp 可执行**
+（真实跑一次 `--ytdlp-cli --version`）都正常，并给出
 「引导程序解压 / 模块导入 / 自检内部」三段耗时；结果写入
 `%TEMP%\VideoDownloader-selftest.txt`，退出码 0 表示通过。
 `.github/workflows/build.yml` 在构建后会执行这一步 —— PyInstaller 漏收文件时
@@ -196,10 +208,10 @@ Playwright 自带 PyInstaller hook，会把 node 驱动自动收进包，无需�
 
 | 项目 | 说明 |
 |------|------|
-| **网络请求** | 仅连接：目标视频平台（下载内容）、GitHub/gyan.dev（工具下载）、字节跳动 ttwid 接口（西瓜访客 cookie） |
-| **本地存储** | `cookies/`（B站 cookies）、`profile_douyin/`（抖音登录态）、`logs/`（运行日志）、`tools/`（yt-dlp/ffmpeg） —— 全在程序目录，用户可控可删 |
+| **网络请求** | 仅连接：目标视频平台（下载内容）、gyan.dev（首次下载 ffmpeg）、字节跳动 ttwid 接口（西瓜访客 cookie）。**yt-dlp 已内置，首次启动不会再连 GitHub 下载它** |
+| **本地存储** | `cookies/`（B站 cookies）、`profile_douyin/`（抖音登录态）、`logs/`（运行日志）、`tools/`（ffmpeg，以及可选的 yt-dlp 副本） —— 全在程序目录，用户可控可删 |
 | **代理探测** | 仅读 Windows 注册表 + 本地回环 TCP 探测常见端口，**无外网流量** |
-| **自动更新** | 仅每两周从 GitHub 官方 releases 更新 `tools/yt-dlp.exe`，可删 `tools/` 禁用 |
+| **自动更新** | 仅在 `tools/yt-dlp.exe` 已存在时（用户手动装过或以前下载过），每两周从 GitHub 官方 releases 用 `yt-dlp -U` 更新它；**内置的那份不会被联网改动**，可删 `tools/` 彻底禁用 |
 | **敏感数据** | B站 `SESSDATA`、抖音登录态 **仅本地使用，不上传任何地方** |
 
 详见 [SECURITY.md](SECURITY.md) 完整安全模型说明。

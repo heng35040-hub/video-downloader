@@ -38,17 +38,18 @@ git clone https://github.com/heng35040-hub/video-downloader.git
 cd video-downloader
 
 # 2. Python 3.10+（勾选 Add to PATH，自带 tkinter）
-# 3. 装依赖
-pip install requests playwright tkinterdnd2
+# 3. 装依赖（yt-dlp 也在其中，程序内置使用，不需要额外下载）
+pip install -r requirements.txt
 
-# 4. Playwright 浏览器（抖音/快手需要）
-playwright install chromium
-
-# 5. 运行
+# 4. 运行
 python main.py
 ```
 
-**首次启动**：程序自检 `yt-dlp` / `ffmpeg`，缺了会弹窗 → 点「一键下载并配置」即可（装进 `tools/` 立即生效）。
+> 抖音不需要 `playwright install chromium`：程序会直接用系统自带的
+> Edge / Chrome（`douyin.py` 的 `_BROWSER_CHANNELS`）。
+
+**首次启动**：yt-dlp 已经随依赖装好；程序只会自检 `ffmpeg`，缺了会弹窗 →
+点「一键下载并配置」即可（装进 `tools/` 立即生效）。
 
 ---
 

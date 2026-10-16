@@ -118,7 +118,7 @@ def check_prereqs(source, outdir, cookies_path=None, use_cookies=False,
     import os
     import shutil
 
-    from config import YTDLP
+    from config import ytdlp_available
 
     if not os.path.isdir(outdir):
         return f"保存目录不存在：{outdir}"
@@ -128,12 +128,12 @@ def check_prereqs(source, outdir, cookies_path=None, use_cookies=False,
         return f"磁盘剩余空间不足 200MB（当前 {free // 1024 // 1024}MB）。"
 
     if source not in ("douyin", "kuaishou"):
-        import shutil
-        if not os.path.isfile(YTDLP) and not shutil.which("yt-dlp"):
-            return ("没有找到 yt-dlp（下载核心工具）。\n"
-                    "安装方法：命令行运行  pip install yt-dlp\n"
-                    "或从 github.com/yt-dlp/yt-dlp/releases 下载可执行"
-                    "文件加入 PATH，并在 config.py 里指定位置。")
+        # yt-dlp 现在内置（见 config.YTDLP_CMD），正常不会缺；
+        # 真缺了说明包或依赖坏了，让用户换新版而不是去手动装
+        if not ytdlp_available():
+            return ("内置的 yt-dlp 没能加载（打包或依赖不完整）。\n"
+                    "请重新下载最新版程序；从源码运行请先执行："
+                    "pip install -r requirements.txt")
         # 合并音视频必须有 ffmpeg，缺了 yt-dlp 会在最后一步莫名失败
         from config import FFMPEG_DIR
         has_ffmpeg = any(os.path.isfile(os.path.join(FFMPEG_DIR, n))

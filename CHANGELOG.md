@@ -8,6 +8,16 @@
 ## [未发布]
 
 ### 变更
+- **yt-dlp 改为内置**：不再依赖首次启动从 GitHub 下载。国内直连 GitHub 的
+  可达性不稳定，而只用 B站/抖音等国内平台、不开代理的用户一旦下载失败，
+  B站 这类主平台也直接用不了。现在 yt-dlp 作为普通依赖打包进程序，
+  开箱即用、首次启动**不需要联网下载**（包体积 51.2 → 57.8 MB）
+  - `config.YTDLP_CMD` 改为**命令行列表**，优先级：
+    `tools\yt-dlp.exe` → 内置 `yt_dlp` 模块 → PATH
+  - 冻结时内置那份的调用方式是 `[本 exe, "--ytdlp-cli", ...]`，
+    由 `main.py` 顶部提前分发 —— 复用原有的「子进程 + 逐行读 stdout +
+    杀进程树取消」机制，`backends.py` 一行逻辑都没改
+  - 首次启动现在只需要下载 ffmpeg
 - 移除代码中的机器特定路径（本机 Python 安装目录、素材盘等），统一改为
   `tools/` 目录 → PATH → `~/Downloads` 的解析顺序，任何机器开箱即用
 - 移除仓库内的收款二维码图片；打赏入口改为接入爱发电主页
@@ -30,14 +40,22 @@
 - `.github/workflows/tests.yml`：push / PR 自动跑 pytest（Python 3.10 / 3.12）
 - `.github/ISSUE_TEMPLATE/`：Bug 报告表单与联系入口
 - `main.py --selftest`：冻结产物无界面自检（Playwright 驱动、tkinterdnd2
-  原生库、requests，并给出「引导程序解压 / 模块导入 / 自检内部」分段耗时），
-  CI 在构建后执行，防止「构建成功但运行缺文件」；用户反馈启动慢时也靠它定位
+  原生库、requests、**内置 yt-dlp 可执行**——真实跑一次
+  `--ytdlp-cli --version`，并给出「引导程序解压 / 模块导入 / 自检内部」
+  分段耗时），CI 在构建后执行，防止「构建成功但运行缺文件」；
+  用户反馈启动慢时也靠它定位
+- `tests/test_config.py` 新增 `TestBundledYtdlp`：覆盖内置 yt-dlp 的
+  命令行解析、开发/冻结两种调用方式、以及 `backends._base_args` 必须
+  把 `YTDLP_CMD` 原样放在参数最前面（共 5 项，总测试数 42 → 47）
 
 ### 修复
 - `build.spec` 的 `excludes` 不再排除 `email` / `http` / `xml` / `html` /
   `dataclasses` / `configparser` 等标准库 —— 它们是 `requests` 的运行时依赖
   （`email.utils`、`email.parser`、`http.client`、`http.cookiejar`），排除后
-  打包版「一键下载 yt-dlp/ffmpeg」与抖音/快手下载会在运行时 `ImportError`
+  打包版下载功能会在运行时 `ImportError`
+- `config.FFMPEG_DIR` 改为独立解析：原先靠「yt-dlp 所在目录」顺带找到 ffmpeg，
+  yt-dlp 换成内置模块后这条链断了（会指向解释器目录），现在按
+  `tools\` → yt-dlp 同目录 → PATH 依次找，并把 PATH 里的 ffmpeg 解析成具体目录
 - `build.spec` 移除多余的 `collect_all("playwright")`：Playwright **自带**
   官方 PyInstaller hook（entry point `pyinstaller40`，内容即
   `collect_data_files("playwright")`），已会自动收集 node 驱动；

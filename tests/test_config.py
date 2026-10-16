@@ -4,6 +4,7 @@
 覆盖 URL 抠取、平台识别、显示裁剪与平台表一致性 —— 全部无网络、无副作用。
 """
 import os
+import sys
 
 import config
 
@@ -129,3 +130,33 @@ class TestPlatformTables:
 
     def test_tools_dir_under_user_data_dir(self):
         assert config.TOOLS_DIR.startswith(config.USER_DATA_DIR)
+
+
+class TestBundledYtdlp:
+    """内置 yt-dlp 的命令行解析 —— 不联网、不起子进程，纯逻辑。"""
+
+    def test_bundled_module_is_importable(self):
+        # requirements.txt 把 yt-dlp 列为依赖，装了就一定能 import
+        import yt_dlp  # noqa: F401
+
+    def test_cmd_is_a_list_and_available(self):
+        assert config.ytdlp_available()
+        assert isinstance(config.YTDLP_CMD, list)
+        assert config.YTDLP_CMD, "YTDLP_CMD 不能为空"
+
+    def test_dev_mode_uses_module_invocation(self):
+        # 未打包时应当用「当前解释器 -m yt_dlp」，而不是外置 exe
+        if not getattr(sys, "frozen", False):
+            assert config.YTDLP_CMD[0] == sys.executable
+            assert config.YTDLP_CMD[1:3] == ["-m", "yt_dlp"]
+
+    def test_ffmpeg_dir_is_absolute(self):
+        assert os.path.isabs(config.FFMPEG_DIR)
+
+    def test_backend_args_start_with_ytdlp_cmd(self):
+        # backends 必须把 YTDLP_CMD 原样放在参数最前面，
+        # 否则内置/外置切换会静默失效
+        import backends
+        args = backends._base_args("bilibili", ".", False, None)
+        assert args[:len(config.YTDLP_CMD)] == config.YTDLP_CMD
+

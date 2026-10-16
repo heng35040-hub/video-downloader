@@ -18,6 +18,35 @@ _T_BOOT = time.time()
 _T_MEIPASS_CTIME = (os.path.getctime(sys._MEIPASS)
                     if getattr(sys, "_MEIPASS", None) else None)
 
+
+# ---------------------------------------------------------------------------
+# 内置 yt-dlp 的入口。
+#
+# backends.py 不再依赖外部的 yt-dlp.exe，而是执行
+#   [sys.executable, "--ytdlp-cli", <原样的 yt-dlp 参数...>]
+# 也就是「让本程序把自己当成 yt-dlp 命令行再跑一遍」。这样
+# 「子进程 + 逐行读 stdout + 杀进程树取消」这套现成机制可以原样复用，
+# 一行都不用改。
+#
+# 必须放在所有重活之前（tkinter、日志、建目录），否则每次下载都白等一截。
+# 注意冻结后 console=False，但父进程用管道拉起时 stdout 依然可写
+# （procutil.build_env 已经给子进程设了 PYTHONUTF8=1，输出是 UTF-8）。
+# ---------------------------------------------------------------------------
+def _run_ytdlp_cli(argv):
+    if sys.stdout is None:          # 从资源管理器直接双击时没有控制台
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+    from yt_dlp import main as ytdlp_main
+    try:
+        return ytdlp_main(argv) or 0
+    except SystemExit as exc:       # yt-dlp 内部用 sys.exit 表达退出码
+        return exc.code if isinstance(exc.code, int) else 0
+
+
+if "--ytdlp-cli" in sys.argv:
+    sys.exit(_run_ytdlp_cli(sys.argv[sys.argv.index("--ytdlp-cli") + 1:]))
+
 import datetime
 import logging
 import queue
@@ -778,15 +807,37 @@ def _selftest(argv):
         with sync_playwright():
             pass
 
+    ytdlp_ver = []
+
+    def _ytdlp_cli_ok():
+        # 端到端验证「exe 自己调用自己跑 yt-dlp」这条关键路径：
+        # 内置 yt-dlp 之后所有 yt-dlp 平台都走它，漏收模块或分发写错都会在这里暴露。
+        if not config.YTDLP_CMD:
+            raise RuntimeError("config.YTDLP_CMD 为空（内置 yt-dlp 不可用）")
+        import subprocess
+        r = subprocess.run(
+            list(config.YTDLP_CMD) + ["--version"],
+            capture_output=True, timeout=180,
+            creationflags=0x08000000 if sys.platform == "win32" else 0)
+        out = (r.stdout or b"").decode("utf-8", "replace").strip()
+        if r.returncode != 0 or not out:
+            raise RuntimeError(
+                f"yt-dlp CLI 自调用失败 rc={r.returncode} "
+                f"stdout={out[:120]!r} stderr="
+                f"{(r.stderr or b'')[:120]!r}")
+        ytdlp_ver.append(out.splitlines()[-1])
+
     check("import requests（email/http 未被误排除）", _requests_ok)
     check("tkinterdnd2 原生库 tkdnd", _dnd_ok)
     check("playwright 驱动可启动", _playwright_ok)
+    check("内置 yt-dlp 可执行（exe 自调用）", _ytdlp_cli_ok)
 
     lines += [
         f"frozen: {getattr(sys, 'frozen', False)}",
         f"base: {config.BASE}",
         f"user data: {config.USER_DATA_DIR}",
-        f"yt-dlp: {config.YTDLP}",
+        f"yt-dlp: {' '.join(config.YTDLP_CMD) if config.YTDLP_CMD else '(不可用)'}",
+        f"yt-dlp 版本: {ytdlp_ver[0] if ytdlp_ver else '(未取到)'}",
         f"ffmpeg dir: {config.FFMPEG_DIR}",
         "--- 启动耗时分解 ---",
         (f"引导程序解压: {(_T_BOOT - _T_MEIPASS_CTIME) * 1000:.0f} ms"

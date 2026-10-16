@@ -43,7 +43,7 @@ class Job:
 
 def _base_args(source, outdir, use_cookies, max_height=None):
     args = [
-        config.YTDLP,
+        *config.YTDLP_CMD,
         "--no-playlist",        # 贴了带 &list= 的链接时，别默默下一整个播放列表
         "--no-simulate",        # --print 默认会打开 simulate，必须显式关掉
         "--quiet",              # 只保留进度和错误，输出干净好解析
@@ -62,9 +62,10 @@ def _base_args(source, outdir, use_cookies, max_height=None):
                f"/bv*+ba/b" if max_height else "bv*+ba/b"),
         "--merge-output-format", "mp4",
         # 用 %(...)j 让 yt-dlp 输出 JSON 转义后的纯 ASCII（中文变 \uXXXX）。
-        # 原因：yt-dlp.exe 是打包过的，无视 PYTHONIOENCODING，一律按控制台
-        # 代码页(本机 cp936)写 stdout。直接读中文路径拿到的是 GBK 字节，
-        # 按 UTF-8 解会变成一串 U+FFFD。转成 JSON 就没有任何非 ASCII 过管道。
+        # 原因：内置 yt-dlp 走的是「exe 自调用」子进程，输出编码取决于
+        # PYTHONUTF8/PYTHONIOENCODING（procutil.build_env 已设成 UTF-8）；
+        # 但外置的 yt-dlp.exe 是打包过的、无视这两个变量，一律按控制台代码页
+        # (本机 cp936) 写 stdout。转成 JSON 就两种情况都不会出现非 ASCII 字节。
         "--print", "after_move:%(filepath)j",
         "--print", "video:TITLE %(title)j",
     ]
@@ -159,6 +160,10 @@ def download_ytdlp(url, source, outdir, use_cookies, emit, job,
     绝不碰任何界面对象（Tkinter 不是线程安全的）。
     """
     started = time.time()
+    if not config.YTDLP_CMD:
+        return False, ("内置的 yt-dlp 没能加载（打包或依赖不完整）。\n"
+                       "请重新下载最新版程序；从源码运行请先执行："
+                       "pip install -r requirements.txt")
     cmd = _base_args(source, outdir, use_cookies, max_height) + [url]
     if source == "ixigua":
         cookie_file = _ixigua_cookie_file(emit)

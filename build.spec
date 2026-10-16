@@ -20,6 +20,10 @@ hiddenimports = [
     "requests",
     "playwright",
     "playwright.sync_api",
+    # 内置的 yt-dlp。yt_dlp 自带官方 PyInstaller hook
+    # （entry point pyinstaller40 → yt_dlp.__pyinstaller），显式列出来
+    # 是为了确保 hook 一定触发，把 1000+ 个 extractor 子模块收全。
+    "yt_dlp",
     "json",
     "re",
     "os",
