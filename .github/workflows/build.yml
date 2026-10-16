@@ -34,6 +34,14 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
 
+    # Windows runner 的 run: 默认就是 pwsh，这里显式声明一遍。
+    # 注意：**不要**在 run: 里写 bash 语法（ls -la、&&、$VAR 等）——
+    # 曾经因为写了 `ls -la` 被 PowerShell 当成 Get-ChildItem -la 而整步失败，
+    # 而 PyInstaller 其实已经构建成功了，排查了很久。
+    defaults:
+      run:
+        shell: pwsh
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -64,37 +72,49 @@ jobs:
       - name: Verify source compiles
         run: |
           python -m py_compile main.py config.py backends.py douyin.py kuaishou.py procutil.py errors.py toolssetup.py smoke_test.py
-          echo "All source files compile OK"
+          Write-Host "All source files compile OK"
 
       - name: Build with PyInstaller (onefile)
         run: |
           pyinstaller --clean build.spec
-          # onefile：整个程序就是一个 exe
-          ls -la dist/VideoDownloader.exe
+          Get-Item dist\VideoDownloader.exe | Format-List Name,Length,LastWriteTime
 
       # 关键一步：真正跑一遍冻结产物。PyInstaller 漏收 playwright 驱动或
       # tkinterdnd2 原生库时，构建照样"成功"，只有启动自检才会暴露。
       - name: Self-test the frozen executable
-        shell: pwsh
         run: |
           $out = Join-Path $env:RUNNER_TEMP "selftest.txt"
-          & .\dist\VideoDownloader.exe --selftest --selftest-out $out
-          $code = $LASTEXITCODE
+          if (Test-Path $out) { Remove-Item $out -Force }
+
+          # 这是 windowed（console=False）exe：PowerShell 用 `&` 调用**不会等待**，
+          # 会立刻返回且 $LASTEXITCODE 为 $null（实测 7ms 返回），
+          # 于是 `$null -ne 0` 恒真、误判为失败。必须用 ProcessStartInfo + WaitForExit。
+          # 也别用 Start-Process -NoNewWindow：PS 5.1 在环境变量存在大小写重复键
+          # （HTTPS_PROXY / https_proxy）时会抛"已添加项"。
+          $psi = New-Object System.Diagnostics.ProcessStartInfo
+          $psi.FileName = (Resolve-Path ".\dist\VideoDownloader.exe").Path
+          $psi.Arguments = "--selftest --selftest-out `"$out`""
+          $psi.UseShellExecute = $false
+          $p = [System.Diagnostics.Process]::Start($psi)
+          if (-not $p.WaitForExit(180000)) { throw "冻结产物自检超时（180 秒）" }
+
+          if (-not (Test-Path $out)) { throw "自检没有生成报告文件：$out" }
           Get-Content $out
-          if ($code -ne 0) { throw "冻结产物自检失败（退出码 $code）" }
+          if ($p.ExitCode -ne 0) { throw "冻结产物自检失败（退出码 $($p.ExitCode)）" }
+          if (-not (Select-String -Path $out -Pattern 'RESULT: PASS' -Quiet)) { throw "自检报告不是 PASS" }
 
       # zip 只是为了网页下载/转发方便，真正的产物是 exe 本身，
       # 所以下面会同时把 exe 挂到 Release 上。
       - name: Package release zip
         run: |
-          powershell -Command "Compress-Archive -Path 'dist\VideoDownloader.exe' -DestinationPath 'VideoDownloader-win64.zip' -Force"
-          ls -lh VideoDownloader-win64.zip
+          Compress-Archive -Path 'dist\VideoDownloader.exe' -DestinationPath 'VideoDownloader-win64.zip' -Force
+          Get-Item VideoDownloader-win64.zip | Format-List Name,Length
 
       - name: Generate SHA256 checksums
         run: |
           certutil -hashfile dist\VideoDownloader.exe SHA256 > SHA256SUMS.txt
           certutil -hashfile VideoDownloader-win64.zip SHA256 >> SHA256SUMS.txt
-          type SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
 
       - name: Create Release
         # 两种触发方式都要能发布：推 tag 时用 tag 名，手动触发时用填的版本号
@@ -104,7 +124,7 @@ jobs:
           name: Video Downloader ${{ inputs.version || github.ref_name }}
           tag_name: ${{ inputs.version || github.ref_name }}
           body: |
-            ## Video Downloader ${{ github.ref_name }}
+            ## Video Downloader ${{ inputs.version || github.ref_name }}
 
             ### 下载
             - **VideoDownloader.exe** — 单文件便携版，**下载后双击即用**，
