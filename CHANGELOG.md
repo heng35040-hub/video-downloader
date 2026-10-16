@@ -5,6 +5,59 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)（采用日期格式 YYYY.MM.DD）。
 
+## [2026.10.16.3] - 2026-10-16
+
+### 新增
+- **使用须知页增加「在桌面创建快捷方式」勾选（默认勾选）**，同意后静默创建
+  —— 与市面安装向导的交互一致：先「我已阅读并同意上述全部条款」，
+  再「在桌面创建快捷方式」，用户第一次打开就能顺手把图标放好
+  - 创建放后台线程，不挡主窗口出现；失败只记日志、不弹框（首次启动就报错
+    很吓人），主界面左下角的同名按钮可随时重试
+  - 桌面已有同名快捷方式则跳过，不擅自覆盖
+  - `_show_disclaimer` 返回值由 `bool` 改为 `(是否同意, 是否要建快捷方式)`；
+    弹窗自身异常放行时返回 `(True, False)` —— 没弹出来就不擅自建快捷方式
+
+### 安全
+- **`build.spec` 的 `excludes` 增加 `sitecustomize` / `usercustomize`**：
+  这两个是「谁的环境谁注入」的钩子模块，打包机 `PYTHONPATH` 里若恰好有一个，
+  PyInstaller 的模块图会顺着它把**外部代码**一起打进 exe。
+  本地打包时实测踩中过一次：exe 里混进了某桌面客户端的「安全删除 shim」
+  （会 monkey-patch `os.remove` / `shutil.rmtree`），并带出内部会话标识
+  与沙箱 IPC 地址。GitHub Actions 的干净 runner 不受影响，仅本地打包会中招，
+  现已从打包配置层面根除（同时本地打包需清空 `PYTHONPATH`）
+- **桌面快捷方式改用环境变量传参**，去掉 `-EncodedCommand`（UTF-16LE + base64）：
+  脚本本体保持纯 ASCII，参数经 `VD_LNK_*` 环境变量传入（Windows 环境变量是
+  Unicode，中文没问题）。base64 命令行是恶意软件的常见混淆手法，容易拉高杀软的
+  启发式评分 —— 本程序未签名，经不起再加一层可疑特征。另加了一道保险丝：
+  脚本若混入非 ASCII 字符直接抛错
+- **`tests.yml` 补装 `yt-dlp`**：`TestBundledYtdlp` 断言 `import yt_dlp` 可用，
+  而该工作流原先只装 pytest，干净 runner 上 4 项必红（已用干净环境模拟 runner
+  复现：`4 failed, 57 passed`）。yt-dlp 仅约 3 MB，不违背「不装
+  requests/playwright」的初衷
+
+## [2026.10.16.2] - 2026-10-16
+
+### 新增
+- **首次启动的「使用须知」勾选**：首次运行（以及须知正文改版后）弹出免责
+  声明窗口，必须勾选「我已阅读并同意上述全部条款」才能进入主界面；关窗视为
+  不同意，程序直接退出。同意状态连同**版本号**一起记在 `settings.json`
+  （`config.DISCLAIMER_VERSION`），正文一改版本号跟着变，老用户会重新看到
+  并重新确认 —— 这是「已尽告知义务」最直接的证据，也是 README 免责声明的
+  界面化落地
+- **「创建桌面快捷方式」按钮**（界面左下角）：一键在桌面生成 `视频下载器.lnk`
+  - 打包后指向 exe 自己；源码运行时指向 `pythonw.exe` + `main.py`
+  - 已存在同名快捷方式时**先询问**是否覆盖，不擅自改动用户的图标与命名
+  - 实现走 PowerShell 的 `WScript.Shell`（Windows 上建 `.lnk` 唯一的免依赖
+    方式）。脚本用 `-EncodedCommand`（UTF-16LE + base64）传入、结果写 UTF-8
+    临时文件再读回 —— 本机 PowerShell 5.1 对非 ASCII 的**命令行参数**与
+    **管道输出**编码都取决于控制台代码页，直传中文会变乱码
+- `tests/test_disclaimer.py`：14 项新测试（须知常量、同意状态读写、
+  快捷方式目标解析、`ShortcutExists`），总测试数 47 → 61
+
+### 变更
+- `.gitignore` 补 `settings.json` / `settings.json.tmp`：源码运行时
+  `USER_DATA_DIR` 就是仓库根目录，同意状态会落在那里，不能进仓库
+
 ## [2026.10.16.1] - 2026-10-16
 
 > 这一版是 `v2026.10.16` 的修正发布：exe 里嵌的版本号此前漏改（还是

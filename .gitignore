@@ -22,4 +22,6 @@ SHA256SUMS.txt
 
 # 本机个性化
 *.lnk
+settings.json
+settings.json.tmp
 video-downloader/

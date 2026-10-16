@@ -98,6 +98,15 @@ excludes = [
     "unittest",
     "pydoc",
     "doctest",
+    # ⚠️ 必须排除：sitecustomize / usercustomize 是「谁的环境谁注入」的钩子模块。
+    # 如果打包机的 PYTHONPATH 里恰好有一个（例如各种 CLI 工具链、IDE、沙箱
+    # 会往 PYTHONPATH 塞 sitecustomize.py 来打补丁），PyInstaller 的模块图会
+    # 顺着它把那份**外部代码**一起打进 exe —— 实测踩过一次：exe 里混进了
+    # 某桌面客户端的「安全删除 shim」（会 monkey-patch os.remove / shutil.rmtree），
+    # 还带出了 CODEBUDDY_SESSION_ID、沙箱 IPC 地址等内部标识。
+    # 用户机器上不需要任何 site 定制，直接排除最干净。
+    "sitecustomize",
+    "usercustomize",
 ]
 
 # Main script
@@ -112,8 +121,8 @@ icon_path = None
 #    曾经就因为漏改，v2026.10.16 的 exe 里嵌的还是 2026.10.15.0。
 ver_info = versioninfo.VSVersionInfo(
     ffi=versioninfo.FixedFileInfo(
-        filevers=(2026, 10, 16, 1),
-        prodvers=(2026, 10, 16, 1),
+        filevers=(2026, 10, 16, 3),
+        prodvers=(2026, 10, 16, 3),
         mask=0x3F,
         flags=0,
         OS=0x40004,
@@ -129,12 +138,12 @@ ver_info = versioninfo.VSVersionInfo(
                     [
                         versioninfo.StringStruct("CompanyName", "Video Downloader"),
                         versioninfo.StringStruct("FileDescription", "Video Downloader"),
-                        versioninfo.StringStruct("FileVersion", "2026.10.16.1"),
+                        versioninfo.StringStruct("FileVersion", "2026.10.16.3"),
                         versioninfo.StringStruct("InternalName", "VideoDownloader"),
                         versioninfo.StringStruct("LegalCopyright", "MIT License"),
                         versioninfo.StringStruct("OriginalFilename", "VideoDownloader.exe"),
                         versioninfo.StringStruct("ProductName", "Video Downloader"),
-                        versioninfo.StringStruct("ProductVersion", "2026.10.16.1"),
+                        versioninfo.StringStruct("ProductVersion", "2026.10.16.3"),
                     ],
                 ),
             ],

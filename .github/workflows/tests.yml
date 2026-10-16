@@ -33,12 +33,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      # 单元测试只依赖标准库 + pytest，故意不装 requests/playwright，
+      # 单元测试本身只依赖标准库 + pytest，故意不装 requests/playwright，
       # 保证「测试失败 = 代码问题」而不是「依赖装不上」。
+      #
+      # 但 yt-dlp 必须装：内置 yt-dlp 是核心功能，TestBundledYtdlp 直接
+      # 断言 `import yt_dlp` 可用、且 YTDLP_CMD 走「当前解释器 -m yt_dlp」。
+      # 不装它这 4 项必红（曾漏装过，本地用干净环境模拟 runner 复现：
+      # 4 failed, 57 passed）。yt-dlp 只有约 3 MB，不违背上面那条原则。
       - name: Install pytest
         run: |
           python -m pip install --upgrade pip
-          pip install pytest
+          pip install pytest yt-dlp
 
       - name: Run unit tests
         run: pytest -q

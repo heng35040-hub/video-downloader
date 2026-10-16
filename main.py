@@ -132,6 +132,266 @@ def _fix_scaling(root):
         pass
 
 
+# ---------------------------------------------------------------------------
+# 使用须知
+#
+# 首次启动（以及须知正文改版后）必须勾选同意才能进入主界面 —— 这是「已尽
+# 告知义务」最直接的证据，也是 README 免责声明的界面化落地。
+# 同意状态记在 settings.json 里，连同版本号一起存：正文一改，版本号跟着变，
+# 老用户会重新看到弹窗。
+# ---------------------------------------------------------------------------
+def _disclaimer_accepted():
+    """当前版本的使用须知是否已被同意过。"""
+    import json
+    try:
+        with open(config.SETTINGS_FILE, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:
+        return False
+    return (isinstance(data, dict)
+            and data.get("disclaimer_version") == config.DISCLAIMER_VERSION)
+
+
+def _save_disclaimer_accepted():
+    """记住「已同意」。先写临时文件再原子替换，避免写一半把设置写坏。"""
+    import json
+    data = {}
+    try:
+        with open(config.SETTINGS_FILE, encoding="utf-8") as fh:
+            loaded = json.load(fh)
+            if isinstance(loaded, dict):
+                data = loaded
+    except Exception:
+        data = {}
+    data["disclaimer_version"] = config.DISCLAIMER_VERSION
+    tmp = config.SETTINGS_FILE + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, config.SETTINGS_FILE)
+    except Exception:
+        logging.exception("写入设置文件失败")
+
+
+def _show_disclaimer(root):
+    """弹出使用须知，返回 (是否同意, 是否要建桌面快捷方式)。关窗 = 不同意。
+
+    勾选项布局照搬市面安装向导：先「我已阅读并同意」，再「在桌面创建快捷方式」
+    （默认勾选）。
+    """
+    win = tk.Toplevel(root)
+    win.title(config.DISCLAIMER_TITLE)
+    win.resizable(False, False)
+
+    frm = ttk.Frame(win, padding=16)
+    frm.pack(fill="both", expand=True)
+
+    ttk.Label(frm, text=config.DISCLAIMER_TITLE,
+              font=("", 13, "bold")).pack(anchor="w")
+
+    body = tk.Text(frm, width=64, height=18, wrap="word", relief="solid",
+                   bd=1, padx=10, pady=8, font=("", 10), cursor="arrow",
+                   background="#fbfbfb")
+    body.pack(fill="both", expand=True, pady=(10, 0))
+    body.insert("1.0", config.DISCLAIMER_TEXT)
+    body.configure(state="disabled")     # 只读，但仍可滚动、可复制
+
+    agree = tk.BooleanVar(value=False)
+    want_shortcut = tk.BooleanVar(value=True)   # 与安装向导一致：默认勾选
+    result = {"ok": False, "shortcut": False}
+
+    def _finish(ok):
+        result["ok"] = ok
+        try:
+            result["shortcut"] = bool(want_shortcut.get())
+        except Exception:            # 变量读取失败就当作不要，别影响启动
+            result["shortcut"] = False
+        win.destroy()
+
+    chk = ttk.Checkbutton(frm, variable=agree,
+                          text="我已阅读并同意上述全部条款")
+    chk_sc = ttk.Checkbutton(frm, variable=want_shortcut,
+                             text="在桌面创建快捷方式")
+    btns = ttk.Frame(frm)
+    btn_ok = ttk.Button(btns, text="同意并继续", state="disabled",
+                        command=lambda: _finish(True))
+    btn_no = ttk.Button(btns, text="不同意并退出",
+                        command=lambda: _finish(False))
+
+    def _on_toggle():
+        btn_ok.configure(state="normal" if agree.get() else "disabled")
+
+    chk.configure(command=_on_toggle)
+
+    # pack 顺序 = 显示顺序：正文 → 勾选项 → 按钮行
+    chk.pack(anchor="w", pady=(10, 0))
+    chk_sc.pack(anchor="w", pady=(4, 0))
+    btns.pack(fill="x", pady=(10, 0))
+    btn_ok.pack(side="right")
+    btn_no.pack(side="right", padx=6)
+
+    win.protocol("WM_DELETE_WINDOW", lambda: _finish(False))
+    win.update_idletasks()
+    x = root.winfo_screenwidth() // 2 - win.winfo_reqwidth() // 2
+    y = root.winfo_screenheight() // 3 - win.winfo_reqheight() // 2
+    win.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+    try:
+        win.grab_set()                   # 模态：不处理完不许动主窗口
+    except Exception:
+        pass
+    win.lift()
+    try:
+        win.focus_force()
+    except Exception:
+        pass
+    root.wait_window(win)
+    return result["ok"], result["shortcut"]
+
+
+# ---------------------------------------------------------------------------
+# 桌面快捷方式
+#
+# exe 是绿色单文件，没有安装程序、也不会自己往桌面放图标，所以给一个手动入口。
+# 建 .lnk 只能用 Windows Shell 的 COM 接口；用 PowerShell 起一个 WScript.Shell
+# 是最省依赖的做法（不必引入 pywin32）。
+# ---------------------------------------------------------------------------
+def _shortcut_target():
+    """返回 (目标程序, 启动参数, 工作目录, 图标)。
+
+    打包后直接指向 exe 自己；源码运行时指向 pythonw.exe + main.py，
+    让从源码跑的人也能得到一个双击即用的快捷方式。
+    """
+    if getattr(sys, "frozen", False):
+        exe = sys.executable
+        return exe, "", os.path.dirname(exe), exe
+    py = sys.executable
+    pyw = os.path.join(os.path.dirname(py), "pythonw.exe")
+    if os.path.isfile(pyw):              # 优先无控制台的 pythonw
+        py = pyw
+    return py, f'"{os.path.join(config.BASE, "main.py")}"', config.BASE, py
+
+
+class ShortcutExists(Exception):
+    """桌面已存在同名快捷方式，需要用户确认是否覆盖。"""
+
+    def __init__(self, path):
+        super().__init__(path)
+        self.path = path
+
+
+def create_desktop_shortcut(name="视频下载器", force=False):
+    """在桌面创建快捷方式，返回 (lnk 路径, 是否覆盖了已存在的)。
+
+    force=False 时若同名快捷方式已存在，不擅自覆盖，抛 ShortcutExists
+    交给界面去问用户 —— 用户可能自己改过图标或名字。
+
+    参数一律通过**环境变量**传给 PowerShell，脚本本体保持纯 ASCII：
+
+    - 本机 PowerShell 5.1 对命令行里的非 ASCII 参数会按控制台代码页解码，
+      直接拼中文会变乱码；环境变量在 Windows 上是 Unicode 的，中文没问题。
+    - 也顺带避开了 -EncodedCommand（UTF-16LE + base64）—— 那个形式是恶意
+      软件的常见混淆手法，容易拉高杀软的启发式评分。本程序未签名，经不起
+      再加一层可疑特征。
+
+    结果同样不走 stdout（管道编码不确定），让脚本写进 UTF-8 临时文件再读回。
+    """
+    import subprocess
+    import tempfile
+
+    target, args, workdir, icon = _shortcut_target()
+    out_file = os.path.join(tempfile.gettempdir(),
+                            f"vd_shortcut_{os.getpid()}.txt")
+
+    script = (
+        "$ProgressPreference = 'SilentlyContinue'\n"
+        "$ErrorActionPreference = 'Stop'\n"
+        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n"
+        "$ws = New-Object -ComObject WScript.Shell\n"
+        "$desktop = [Environment]::GetFolderPath('Desktop')\n"
+        "$path = Join-Path $desktop ($env:VD_LNK_NAME + '.lnk')\n"
+        "$existed = Test-Path -LiteralPath $path\n"
+        # 默认不覆盖；VD_LNK_FORCE 缺失时也走「不覆盖」这一侧
+        "if ($existed -and $env:VD_LNK_FORCE -ne '1') {\n"
+        "  Set-Content -LiteralPath $env:VD_LNK_OUT "
+        "-Value ('skip|' + $path) -Encoding UTF8\n"
+        "  exit 0\n"
+        "}\n"
+        # 已存在的 .lnk 有时处于被占用/受保护状态，先尽力删一次；
+        # 删不掉也不影响 —— Save() 本身就会覆盖。
+        "if ($existed) { Remove-Item -LiteralPath $path -Force "
+        "-ErrorAction SilentlyContinue | Out-Null }\n"
+        "$sc = $ws.CreateShortcut($path)\n"
+        "$sc.TargetPath = $env:VD_LNK_TARGET\n"
+        "$sc.Arguments = '' + $env:VD_LNK_ARGS\n"
+        "$sc.WorkingDirectory = $env:VD_LNK_WORKDIR\n"
+        "$sc.IconLocation = $env:VD_LNK_ICON + ',0'\n"
+        "$sc.Description = $env:VD_LNK_NAME\n"
+        "$sc.Save()\n"
+        "if (-not (Test-Path -LiteralPath $path)) "
+        "{ throw 'shortcut was not written: ' + $path }\n"
+        "Set-Content -LiteralPath $env:VD_LNK_OUT "
+        "-Value ($existed.ToString() + '|' + $path) -Encoding UTF8\n"
+    )
+    if not script.isascii():             # 保险丝：脚本混入中文就失去意义了
+        raise RuntimeError("PowerShell 脚本必须是纯 ASCII")
+
+    child_env = {
+        **os.environ,
+        "VD_LNK_NAME": name,
+        "VD_LNK_TARGET": target,
+        "VD_LNK_ARGS": args,
+        "VD_LNK_WORKDIR": workdir,
+        "VD_LNK_ICON": icon,
+        "VD_LNK_FORCE": "1" if force else "0",
+        "VD_LNK_OUT": out_file,
+    }
+
+    proc = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True, timeout=30, env=child_env,
+        creationflags=0x08000000 if sys.platform == "win32" else 0)
+
+    text = ""
+    try:
+        with open(out_file, encoding="utf-8-sig") as fh:
+            text = fh.read().strip()
+    except Exception:
+        text = ""
+    finally:
+        try:
+            os.remove(out_file)
+        except Exception:          # 某些安全策略会拦截删除，忽略即可
+            pass
+
+    if not text:
+        err = (proc.stderr or b"").decode("utf-8", "replace").strip()
+        raise RuntimeError(err or f"PowerShell 返回码 {proc.returncode}")
+
+    status, _, path = text.partition("|")
+    status, path = status.strip(), path.strip()
+    if status == "skip":
+        raise ShortcutExists(path)
+    return path, status.lower() == "true"
+
+
+def _create_shortcut_quietly():
+    """首次启动时按用户勾选**静默**建桌面快捷方式。
+
+    放后台线程跑，不挡主窗口出现；失败只记日志、不弹框 —— 首次启动就报错
+    很吓人，而且主界面左下角本来就有同名按钮可以重试。
+    """
+    def work():
+        try:
+            path, _existed = create_desktop_shortcut()
+            logging.info("首次启动已创建桌面快捷方式: %s", path)
+        except ShortcutExists:
+            logging.info("桌面已存在同名快捷方式，跳过创建")
+        except Exception:
+            logging.exception("首次启动创建桌面快捷方式失败")
+
+    threading.Thread(target=work, daemon=True).start()
+
+
 class App:
     def __init__(self, root, dnd_ok):
         self.root = root
@@ -245,11 +505,14 @@ class App:
         ttk.Label(outer, textvariable=self.detail_var,
                   foreground="#666").pack(fill="x", pady=(4, 0))
 
-        # 支持作者（自愿）：config.DONATE_URL 留空则完全不显示
+        # 底部一行：左边「创建桌面快捷方式」，右边打赏（DONATE_URL 留空则不显示）
+        bottom = ttk.Frame(outer)
+        bottom.pack(fill="x")
+        self.shortcut_btn = ttk.Button(bottom, text="创建桌面快捷方式",
+                                       command=self._make_shortcut)
+        self.shortcut_btn.pack(side="left")
         if config.DONATE_URL:
             import webbrowser
-            bottom = ttk.Frame(outer)
-            bottom.pack(fill="x")
             ttk.Button(bottom, text="☕ 支持作者（自愿）",
                        command=lambda: webbrowser.open(config.DONATE_URL)
                        ).pack(side="right")
@@ -357,6 +620,22 @@ class App:
             initialdir=self.outdir_var.get() or os.path.expanduser("~"))
         if path:
             self.outdir_var.set(os.path.normpath(path))
+
+    def _make_shortcut(self, force=False):
+        """在桌面建快捷方式。起 PowerShell 要几百毫秒，丢到线程里别卡界面。"""
+        self.shortcut_btn.configure(state="disabled")
+
+        def work():
+            try:
+                path, existed = create_desktop_shortcut(force=force)
+                self.q.put(("shortcut_ok", {"text": path, "existed": existed}))
+            except ShortcutExists as exc:
+                self.q.put(("shortcut_exists", {"text": exc.path}))
+            except Exception as exc:
+                logging.exception("创建桌面快捷方式失败")
+                self.q.put(("shortcut_fail", {"text": str(exc)}))
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _clear(self):
         self.urls = {s: "" for s in config.SOURCES}
@@ -513,6 +792,24 @@ class App:
             logging.error("worker 崩溃:\n%s", kw.get("text"))
             messagebox.showerror("程序出错",
                                  "下载线程出错了，详情见 logs\\app.log")
+        elif kind == "shortcut_ok":
+            self.shortcut_btn.configure(state="normal")
+            verb = "已更新" if kw.get("existed") else "已创建"
+            messagebox.showinfo("完成",
+                                f"桌面快捷方式{verb}：\n{kw.get('text', '')}")
+        elif kind == "shortcut_exists":
+            if messagebox.askyesno(
+                    "桌面已有同名快捷方式",
+                    f"{kw.get('text', '')}\n\n要覆盖它吗？"):
+                self._make_shortcut(force=True)   # 保持禁用，交给新一轮任务
+            else:
+                self.shortcut_btn.configure(state="normal")
+        elif kind == "shortcut_fail":
+            self.shortcut_btn.configure(state="normal")
+            messagebox.showerror(
+                "创建失败",
+                (kw.get("text") or "") +
+                "\n\n也可以手动操作：右键程序 → 发送到 → 桌面快捷方式。")
         elif kind == "finished":
             self.busy = False
             self.go_btn.configure(state="normal")
@@ -891,7 +1188,30 @@ def main():
         root = tk.Tk()
 
     _fix_scaling(root)
+
+    # 首次运行（或须知改版后）先过「使用须知」这道闸：不同意就直接退出。
+    # 先 withdraw 再建主界面，避免弹窗背后闪出一个空白窗口。
+    # 弹窗自身失败时选择放行 —— 宁可少一层告知，也不能让程序完全打不开。
+    root.withdraw()
+    if not _disclaimer_accepted():
+        try:
+            agreed, want_shortcut = _show_disclaimer(root)
+        except Exception:
+            logging.exception("使用须知弹窗失败，放行以免程序无法启动")
+            agreed, want_shortcut = True, False   # 没弹出来就不擅自建快捷方式
+        if not agreed:
+            logging.info("用户未同意使用须知，程序退出")
+            try:
+                root.destroy()
+            except Exception:
+                pass
+            return
+        _save_disclaimer_accepted()
+        if want_shortcut:
+            _create_shortcut_quietly()
+
     App(root, dnd_ok)
+    root.deiconify()
     root.mainloop()
 
 
