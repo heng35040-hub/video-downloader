@@ -89,6 +89,7 @@ class TestShortcutTarget:
 
 class TestShortcutExists:
     def test_carries_path(self):
-        exc = main.ShortcutExists(r"C:\Users\x\Desktop\视频下载器.lnk")
+        # 用明显虚构的路径，避免被隐私扫描器误判成真实本机路径
+        exc = main.ShortcutExists(r"C:\Users\example\Desktop\视频下载器.lnk")
         assert exc.path.endswith(".lnk")
         assert str(exc).endswith(".lnk")
