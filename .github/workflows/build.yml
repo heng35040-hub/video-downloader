@@ -1,8 +1,10 @@
 # Build and Release Windows Executable
 #
 # Triggers:
-#   - Push tag matching v* (e.g., v2026.10.15)
-#   - Manual workflow_dispatch
+#   - Push tag matching v* (e.g., v2026.10.16) —— 常规发布路径
+#   - Manual workflow_dispatch —— 手动发布/补发布：填一个版本标签（如 v2026.10.16），
+#     会用当前分支构建并把 exe 挂到该标签的 Release 上；标签不存在会自动创建，
+#     Release 已存在则更新其附件。这是在网页上手动建了 Release、漏挂 exe 时的补救入口。
 #
 # Outputs:
 #   - dist/VideoDownloader.exe   单文件，双击即用，无需解压（唯一发布形态）
@@ -19,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version tag (e.g., v2026.10.15)"
+        description: "发布版本标签，例如 v2026.10.16（不存在则自动创建）"
         required: true
         type: string
 
@@ -95,11 +97,12 @@ jobs:
           type SHA256SUMS.txt
 
       - name: Create Release
+        # 两种触发方式都要能发布：推 tag 时用 tag 名，手动触发时用填的版本号
+        # （标签不存在会由 action-gh-release 自动创建；Release 已存在则更新附件）。
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: Video Downloader ${{ github.ref_name }}
-          tag_name: ${{ github.ref_name }}
+          name: Video Downloader ${{ inputs.version || github.ref_name }}
+          tag_name: ${{ inputs.version || github.ref_name }}
           body: |
             ## Video Downloader ${{ github.ref_name }}
 
