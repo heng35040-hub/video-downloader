@@ -42,7 +42,8 @@
 ### 3. 工具下载/更新（toolssetup.py）
 | 来源 | 用途 | 频率 |
 |------|------|------|
-| `www.gyan.dev/ffmpeg/builds/` | ffmpeg/ffprobe (zip) | 首次缺失 |
+| `www.gyan.dev/ffmpeg/builds/` | ffmpeg/ffprobe (zip) | 首次缺失（首选源） |
+| `github.com/BtbN/FFmpeg-Builds/releases` | ffmpeg/ffprobe (zip) | 首次缺失（首选源 20 秒内速度低于 200 KB/s 时的备选源） |
 | `github.com/yt-dlp/yt-dlp/releases` | yt-dlp 单文件可执行程序 | **仅当 `tools/yt-dlp.exe` 已存在时**每两周自更新；首次安装不需要（yt-dlp 已内置在程序里） |
 
 **安全闸**：
@@ -87,7 +88,7 @@
 
 ### 完整性
 - yt-dlp：**内置在程序里**（PyPI 官方包，随 exe 分发）；仅当 `tools/yt-dlp.exe` 已存在时才从 GitHub Releases 自更新，无签名验证（GitHub TLS 传输信任链）
-- ffmpeg：gyan.dev 官方推荐源，zip 内文件名固定匹配
+- ffmpeg：gyan.dev 官方推荐源，或 BtbN/FFmpeg-Builds（GitHub）；zip 内文件名固定匹配
 
 ---
 

@@ -36,10 +36,12 @@
   （Windows 10/11 一般自带 Edge），**无需额外下载约 150MB 的 chromium**；
   只有在极精简的系统上两者都没有时，才需要自行安装 Edge/Chrome
 
-  **ffmpeg 没装也没关系**：启动时会弹窗提示，点「一键下载并配置」即可从
-  ffmpeg.org 官方推荐的 gyan.dev 构建源自动下载，安装到程序目录 `tools\`
-  并立即生效。也可以关闭弹窗自行安装；加入 PATH 后程序能自动找到，
-  或在 `config.py` 里手动指定路径
+  **ffmpeg 没装也没关系**：启动时会弹窗提示，点「一键下载并配置」即可自动
+  下载到程序目录 `tools\` 并立即生效。下载源有多个，**会先试
+  gyan.dev（ffmpeg.org 官方推荐），20 秒内速度低于 200 KB/s 就自动切到
+  GitHub 上的 BtbN/FFmpeg-Builds** —— 实测 gyan.dev 有时只有 34–49 KB/s
+  （109MB 要等约 50 分钟），切到 GitHub 后 38 秒下完。也可以关闭弹窗自行
+  安装；加入 PATH 后程序能自动找到，或在 `config.py` 里手动指定路径
 - 下载被墙平台（YouTube / X / Instagram / TikTok）需要本机代理。
   端口**自动探测**：优先读 Windows 系统代理设置，其次尝试常见端口
   （7897 / 7890 / 10809 等）；自动探测不合适时在 `config.py` 里手动指定

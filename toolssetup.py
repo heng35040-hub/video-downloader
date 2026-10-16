@@ -33,6 +33,33 @@ import config
 _YTDLP_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
 _FFMPEG_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 
+# ffmpeg 的多个下载源，按顺序尝试。
+#
+# 为什么需要多个源：实测（2026-10）gyan.dev 直连只有 34–49 KB/s，而它的包有
+# 109 MB —— 也就是要等约 50 分钟；同期 BtbN 的 GitHub 源直连有 3.07 MB/s
+# （约 36 秒）。gyan.dev 是 ffmpeg.org 官方推荐源、提供 release 构建，所以
+# 仍放第一位；但它「慢而不失败」，光靠异常回退切不走，因此配了慢源探测
+# （_SLOW_PROBE_AFTER / speed_floor），太慢就自动换下一个源。
+#
+# 两个包的目录结构一致（都在 bin\ 下放 ffmpeg.exe / ffprobe.exe），
+# 所以 _ZIP_MEMBER_RE 和 _install_ffmpeg 的抽取逻辑不用改。
+#
+# 体积：gyan.dev essentials 109 MB；BtbN gpl 191 MB（lgpl 变体 170 MB，但少了
+# x264/x265，和 gyan.dev essentials 的能力集不一致，为保证「换源后行为相同」
+# 仍用 gpl）。多出来的 80 MB 在 4 MB/s 下只多 20 秒，比等 50 分钟划算得多。
+_FFMPEG_SOURCES = (
+    ("gyan.dev（ffmpeg.org 官方推荐）", _FFMPEG_URL),
+    ("BtbN/FFmpeg-Builds（GitHub）",
+     "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/"
+     "ffmpeg-master-latest-win64-gpl.zip"),
+)
+
+# 慢源探测：观察窗口（秒）与速度下限（字节/秒）。
+# 20 秒 + 200 KB/s 的组合下，gyan.dev（34 KB/s）会在 ~20 秒时被判慢并切源，
+# 而任何正常宽带（≥ 1 MB/s）都不会被误判。
+_SLOW_PROBE_AFTER = 20.0
+_SLOW_FLOOR = 200 * 1024
+
 # 落盘位置：程序目录 tools\，目录是常量、文件名全是字面量
 _TOOLS = pathlib.Path(config.TOOLS_DIR)
 _YTDLP_NAME = "yt-dlp.exe" if os.name == "nt" else "yt-dlp"
@@ -52,13 +79,18 @@ _TOOLS_INFO = {
     "ffmpeg": {
         "name": "ffmpeg",
         "desc": "音视频合并处理（开源多媒体框架，几乎所有播放器的底层）",
-        "source": "gyan.dev —— ffmpeg.org 官方推荐的 Windows 构建源",
+        "source": "gyan.dev（ffmpeg.org 官方推荐）；太慢时自动换 GitHub 上的 "
+                  "BtbN/FFmpeg-Builds 源",
     },
 }
 
 
 class _Cancelled(Exception):
     pass
+
+
+class _TooSlow(Exception):
+    """当前源太慢，调用方应该换下一个源（不是错误，是策略）。"""
 
 
 def human(n):
@@ -109,19 +141,25 @@ def _session():
     return s
 
 
-def _download_bytes(url, progress_cb, should_cancel):
+def _download_bytes(url, progress_cb, should_cancel, speed_floor=None):
     """拉取官方源到内存，返回 bytes。只碰网络，不碰文件系统。
 
     直连优先；连接失败时自动改走探测到的本机代理重试一次 ——
-    GitHub 直连在国内时好时坏，而很多人的 Clash 一直开着。
+    很多人的 Clash 一直开着，走它往往比直连稳。
+
+    speed_floor 给定时启用「太慢就放弃」判定（见 _stream_to_bytes）：
+    调用方据此在多个源之间自动切换。
     """
     import requests
 
     _assert_public_host(url)
     session = _session()
     try:
-        return _stream_to_bytes(session, url, progress_cb, should_cancel)
+        return _stream_to_bytes(session, url, progress_cb, should_cancel,
+                                speed_floor)
     except _Cancelled:
+        raise
+    except _TooSlow:
         raise
     except (requests.exceptions.ConnectionError,
             requests.exceptions.Timeout) as exc:
@@ -130,8 +168,11 @@ def _download_bytes(url, progress_cb, should_cancel):
         progress_cb(-1.0, "直连失败，改走本机代理重试…")
         session.proxies = {"http": config.PROXY, "https": config.PROXY}
         try:
-            return _stream_to_bytes(session, url, progress_cb, should_cancel)
+            return _stream_to_bytes(session, url, progress_cb, should_cancel,
+                                    speed_floor)
         except _Cancelled:
+            raise
+        except _TooSlow:
             raise
         except Exception as exc:
             raise RuntimeError(
@@ -139,9 +180,21 @@ def _download_bytes(url, progress_cb, should_cancel):
                 "请检查网络；若代理软件没开，开启后重试一般即可。") from exc
 
 
-def _stream_to_bytes(session, url, progress_cb, should_cancel):
+def _stream_to_bytes(session, url, progress_cb, should_cancel,
+                     speed_floor=None):
+    """流式下载到内存。
+
+    speed_floor（字节/秒）给定时做「慢源探测」：观察 _SLOW_PROBE_AFTER 秒后，
+    若平均速度仍低于该值就抛 _TooSlow，让调用方换下一个源。
+
+    为什么需要它：实测 gyan.dev 只有 34–49 KB/s（109MB 要 50 分钟），
+    而它并不会「失败」，所以单靠异常回退永远切不走，用户只能干等。
+    """
+    import time
+
     _assert_public_host(url)
     buf = bytearray()
+    started = time.time()
     with session.get(url, stream=True, timeout=(15, 60),
                      allow_redirects=True) as resp:
         resp.raise_for_status()
@@ -158,6 +211,12 @@ def _stream_to_bytes(session, url, progress_cb, should_cancel):
                 progress_cb(done / total, f"{human(done)} / {human(total)}")
             else:
                 progress_cb(-1.0, f"已下载 {human(done)}")
+
+            if speed_floor:
+                elapsed = time.time() - started
+                if elapsed >= _SLOW_PROBE_AFTER and done / elapsed < speed_floor:
+                    raise _TooSlow(
+                        f"平均速度仅 {human(done / elapsed)}/s，已放弃该源")
     return bytes(buf)
 
 
@@ -171,9 +230,8 @@ def _install_ytdlp(progress_cb, should_cancel):
     return str(_YTDLP_EXE)
 
 
-def _install_ffmpeg(progress_cb, should_cancel):
-    """下载官方 zip，在内存中解包，只抽出 ffmpeg.exe / ffprobe.exe。"""
-    zip_data = _download_bytes(_FFMPEG_URL, progress_cb, should_cancel)
+def _extract_ffmpeg(zip_data, progress_cb):
+    """从 zip 里只抽出 bin\\ffmpeg.exe 和 bin\\ffprobe.exe。"""
     _TOOLS.mkdir(parents=True, exist_ok=True)
     got_ffmpeg = False
     with zipfile.ZipFile(io.BytesIO(zip_data)) as z:
@@ -190,6 +248,41 @@ def _install_ffmpeg(progress_cb, should_cancel):
     if not got_ffmpeg:
         raise RuntimeError("zip 里没找到 ffmpeg.exe，官方包结构可能变了")
     return str(_FFMPEG_EXE)
+
+
+def _install_ffmpeg(progress_cb, should_cancel):
+    """按 _FFMPEG_SOURCES 顺序下载，在内存中解包，只抽出两个 exe。
+
+    某个源太慢（慢源探测）或失败时自动换下一个源。
+    **最后一个源不做慢源判定**，只保留 requests 自己的超时 ——
+    免得全网都慢时直接失败，那还不如慢慢下完。
+    """
+    last_exc = None
+    total = len(_FFMPEG_SOURCES)
+    for i, (label, url) in enumerate(_FFMPEG_SOURCES):
+        is_last = (i == total - 1)
+        try:
+            progress_cb(-1.0, f"正在从 {label} 下载 ffmpeg…")
+            zip_data = _download_bytes(
+                url, progress_cb, should_cancel,
+                speed_floor=None if is_last else _SLOW_FLOOR)
+        except _Cancelled:
+            raise
+        except _TooSlow as exc:
+            progress_cb(-1.0, f"{label} 太慢（{exc}），换下一个源…")
+            last_exc = exc
+            continue
+        except Exception as exc:
+            progress_cb(-1.0, f"{label} 下载失败：{exc}")
+            last_exc = exc
+            continue
+        return _extract_ffmpeg(zip_data, progress_cb)
+
+    raise RuntimeError(
+        "所有 ffmpeg 下载源都失败了：\n"
+        + "\n".join(f"  - {label}" for label, _ in _FFMPEG_SOURCES)
+        + f"\n最后一条错误：{last_exc}\n"
+        "可以稍后重试，或自行安装 ffmpeg 并加入 PATH。") from last_exc
 
 
 def install_tool(key, progress_cb, should_cancel=lambda: False):

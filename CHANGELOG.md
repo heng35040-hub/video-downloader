@@ -49,6 +49,18 @@
   把 `YTDLP_CMD` 原样放在参数最前面（共 5 项，总测试数 42 → 47）
 
 ### 修复
+- **ffmpeg 一键下载加入多源自动切换**：原先只用 gyan.dev 一个源，实测
+  （2026-10）它直连只有 **34–49 KB/s**，而包有 109 MB —— 用户要干等约
+  50 分钟；而且它是「慢而不失败」，原来的「直连失败才走代理」回退永远不会
+  触发。现在按顺序试多个源，并加了**慢源探测**（20 秒内平均速度低于
+  200 KB/s 就换源），gyan.dev 慢时自动切到 GitHub 上的 BtbN/FFmpeg-Builds。
+  实测同一台机器：**50 分钟 → 38.5 秒**
+- **启动提速两处**（内置 yt-dlp 之后顺手清理的）：
+  - `config` 不再为了「看一眼内置模块在不在」就 `import yt_dlp`
+    （1000+ 个 extractor 子模块，约 350 ms），改用 `importlib.util.find_spec`
+    探测，并保留真导入兜底
+  - 代理端口探测由**串行改并发**：一个代理都没开时原先要等 7 × 150 ms，
+    新用户（干净机器、没装代理）每次启动都白等；并发后最坏约等于单个超时
 - `build.spec` 的 `excludes` 不再排除 `email` / `http` / `xml` / `html` /
   `dataclasses` / `configparser` 等标准库 —— 它们是 `requests` 的运行时依赖
   （`email.utils`、`email.parser`、`http.client`、`http.cookiejar`），排除后

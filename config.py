@@ -59,11 +59,33 @@ YTDLP_CLI_FLAG = "--ytdlp-cli"
 _YTDLP_EXE_NAME = "yt-dlp.exe" if _WIN else "yt-dlp"
 
 
-def _bundled_ytdlp_cmd():
-    """内置 yt_dlp 模块的调用方式；模块不可用则返回 None。"""
+def _bundled_ytdlp_available():
+    """内置 yt_dlp 是否可用。
+
+    刻意用 find_spec 而不是直接 import：yt_dlp 有 1000+ 个 extractor 子模块，
+    真导入要花约 1.2 秒，而 config 是在**每次启动**时被导入的 ——
+    为了「看一眼在不在」付这个代价太亏（实测启动会从 4.5 秒变 5.7 秒）。
+    真正需要它是在跑下载时，那时候由 main.py 的 --ytdlp-cli 分发去导入。
+
+    find_spec 万一在冻结环境里失灵（返回 None），退回真导入兜底，
+    宁可慢也不能误判成「不可用」。
+    """
+    import importlib.util
+    try:
+        if importlib.util.find_spec("yt_dlp") is not None:
+            return True
+    except Exception:
+        pass
     try:
         import yt_dlp  # noqa: F401
+        return True
     except Exception:
+        return False
+
+
+def _bundled_ytdlp_cmd():
+    """内置 yt_dlp 模块的调用方式；模块不可用则返回 None。"""
+    if not _bundled_ytdlp_available():
         return None
     if getattr(sys, "frozen", False):
         # 冻结后没有独立的 python 解释器可用，只能让 exe 带旗标再跑一遍自己
@@ -134,9 +156,12 @@ def _detect_proxy():
     """探测本机代理，返回 (proxy, host, port)。
 
     顺序：Windows 系统代理设置（用户浏览器在用的那个，最可靠）→
-    逐个试常见代理端口 → 兜底 Clash 默认 7897（连不上时预检会给出
-    明确提示，用户可改 config.py）。只做 TCP 探测，不做真实请求，
-    启动耗时可忽略。
+    并发试常见代理端口 → 兜底 Clash 默认 7897（连不上时预检会给出
+    明确提示，用户可改 config.py）。只做 TCP 探测，不做真实请求。
+
+    端口探测**必须并发**：串行时「一个代理都没开」要等 7 × timeout，
+    实测约 1.05 秒；而「干净机器、没装代理」恰恰是新用户最常见的状态，
+    每次启动白等一秒很亏。并发后最坏约等于单个 timeout。
     """
     host = "127.0.0.1"
     # 1) 系统代理设置
@@ -161,14 +186,24 @@ def _detect_proxy():
                         return f"http://{ph}:{pp}", ph, int(pp)
     except Exception:
         pass
-    # 2) 常见端口探测（Clash Verge / Clash / v2rayN / 通用 socks / privoxy）
+    # 2) 常见端口并发探测
+    #    （Clash Verge / Clash / v2rayN / 通用 socks / privoxy）
     import socket
-    for port in (7897, 7890, 10809, 1080, 8118, 2080, 8889):
+    from concurrent.futures import ThreadPoolExecutor
+
+    ports = (7897, 7890, 10809, 1080, 8118, 2080, 8889)
+
+    def _probe(port):
         try:
-            socket.create_connection((host, port), timeout=0.15).close()
-            return f"http://{host}:{port}", host, port
+            socket.create_connection((host, port), timeout=0.3).close()
+            return port
         except OSError:
-            continue
+            return None
+
+    with ThreadPoolExecutor(max_workers=len(ports)) as pool:
+        for port in pool.map(_probe, ports):
+            if port is not None:
+                return f"http://{host}:{port}", host, port
     # 3) 兜底
     return "http://127.0.0.1:7897", "127.0.0.1", 7897
 
