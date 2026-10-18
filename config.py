@@ -163,8 +163,9 @@ VERSION = "2026.10.18.5"
 # 版本清单放 Gitee：国内直连可达，不需要用户有代理。
 # 内容形如 {"version": "2026.10.19", "notes": "修复抖音", "url": "下载页"}
 UPDATE_JSON_URL = "https://gitee.com/peace_heng/heng/raw/master/version.json"
-# 有新版时让用户去的下载页（百度网盘；能上 GitHub 的用户 README 里有 Releases）
-DOWNLOAD_URL = "https://pan.baidu.com/s/1eVnkIJQ5dcJEEImVM_687A?pwd=ycrd"
+# 有新版时让用户去的下载页。这是**文件夹**分享链接：文件夹里的文件可以换，
+# 链接永久不变（单文件分享一换文件链接就失效，踩过）。
+DOWNLOAD_URL = "https://pan.baidu.com/s/1DIrE9sLz71D2aeef2bRAPQ?pwd=g6r8"
 # 自动检查的最小间隔（秒）。启动时最多每 24 小时问一次，手动按钮不受限
 UPDATE_CHECK_INTERVAL = 24 * 3600
 

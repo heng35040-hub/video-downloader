@@ -56,7 +56,7 @@
 
 | 方式 | 适合 | 说明 |
 |---|---|---|
-| **百度网盘**（普通用户推荐） | 访问 GitHub 不方便 | [下载链接](https://pan.baidu.com/s/1eVnkIJQ5dcJEEImVM_687A?pwd=ycrd)　提取码：`ycrd`。**非会员下载较慢**，与文件本身无关；链接里的文件始终是最新版，版本号见文件名 |
+| **百度网盘**（普通用户推荐） | 访问 GitHub 不方便 | [下载链接](https://pan.baidu.com/s/1DIrE9sLz71D2aeef2bRAPQ?pwd=g6r8)　提取码：`g6r8`。**链接永久有效，里面的文件持续更新**（版本号见文件名）；**非会员下载较慢**，与文件本身无关 |
 | **GitHub Releases**（开发者推荐） | 能访问 GitHub | [最新版](https://github.com/heng35040-hub/video-downloader/releases/latest)，附 SHA256 校验和 |
 
 > 网盘与 GitHub 的版本可能短暂不同步，**以 GitHub Releases 的版本号为准**。
