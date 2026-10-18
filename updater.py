@@ -44,8 +44,32 @@ def is_newer(remote, local):
     return r > l
 
 
+def parse_manifest(data, local_version):
+    """把版本清单解析成更新信息；没有更新返回 None。
+
+    清单字段：
+      version      必填，如 "2026.10.19"
+      notes        可选，一句话说明（显示在状态栏）
+      url          可选，网盘下载页（普通用户）
+      url_github   可选，GitHub Releases（懂 GitHub 的用户，不用忍受网盘限速）
+
+    抽成纯函数是为了能单测 —— check() 里带网络，不好测。
+    """
+    if not isinstance(data, dict):
+        return None
+    ver = data.get("version")
+    if not is_newer(ver, local_version):
+        return None
+    return {
+        "version": str(ver).strip().lstrip("vV"),
+        "notes": str(data.get("notes") or "").strip(),
+        "url": str(data.get("url") or "").strip(),
+        "url_github": str(data.get("url_github") or "").strip(),
+    }
+
+
 def check(url, local_version, timeout=1.5):
-    """请求版本清单，有新版本返回 {version, notes, url}，否则 None。
+    """请求版本清单，有新版本返回 {version, notes, url, url_github}，否则 None。
 
     返回 None 的情形包括：网络失败、非 200、JSON 坏、没有 version 字段、
     版本不比本地新。调用方一律按「没有更新」处理。
@@ -65,13 +89,4 @@ def check(url, local_version, timeout=1.5):
     except Exception:
         return None
 
-    if not isinstance(data, dict):
-        return None
-    ver = data.get("version")
-    if not is_newer(ver, local_version):
-        return None
-    return {
-        "version": str(ver).strip().lstrip("vV"),
-        "notes": str(data.get("notes") or "").strip(),
-        "url": str(data.get("url") or "").strip(),
-    }
+    return parse_manifest(data, local_version)

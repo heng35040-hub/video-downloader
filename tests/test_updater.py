@@ -43,6 +43,34 @@ class TestIsNewer:
         assert not updater.is_newer("2026.10.19", "")
 
 
+class TestParseManifest:
+    def test_returns_all_fields(self):
+        info = updater.parse_manifest(
+            {"version": "2026.10.19", "notes": "修复抖音",
+             "url": "https://pan.baidu.com/x",
+             "url_github": "https://github.com/x/y/releases"},
+            "2026.10.18.6")
+        assert info["version"] == "2026.10.19"
+        assert info["notes"] == "修复抖音"
+        assert info["url"] == "https://pan.baidu.com/x"
+        assert info["url_github"] == "https://github.com/x/y/releases"
+
+    def test_optional_fields_default_empty(self):
+        # 老格式清单（没有 url_github）也要能正常解析
+        info = updater.parse_manifest({"version": "2026.10.19"},
+                                      "2026.10.18.6")
+        assert info["url"] == "" and info["url_github"] == ""
+        assert info["notes"] == ""
+
+    def test_same_version_returns_none(self):
+        assert updater.parse_manifest({"version": "2026.10.18.6"},
+                                      "2026.10.18.6") is None
+
+    @pytest.mark.parametrize("bad", [[], "x", None, 123, {"no_version": 1}])
+    def test_bad_shape_returns_none(self, bad):
+        assert updater.parse_manifest(bad, "2026.10.18.6") is None
+
+
 class TestCheck:
     def test_empty_url_returns_none(self):
         assert updater.check("", "2026.10.18.4") is None

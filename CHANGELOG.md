@@ -5,6 +5,17 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)（采用日期格式 YYYY.MM.DD）。
 
+## [2026.10.18.6] - 2026-10-18
+
+### 新增
+- **下载新版弹窗给两个入口**：网盘（普通用户）/ GitHub Releases
+  （懂 GitHub 的用户不用忍受网盘限速）。清单里新增可选字段 `url_github`，
+  不填时回退到内置的 Releases 地址
+
+### 修复
+- 版本清单解析抽成纯函数 `parse_manifest`，可单测（此前 `check` 里带网络，
+  解析分支测不到）；补 8 项测试，总测试 154 → 162
+
 ## [2026.10.18.5] - 2026-10-18
 
 ### 新增

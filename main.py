@@ -921,9 +921,52 @@ class App:
             self.status_var.set("已是最新版（或暂时连不上更新服务器）")
 
     def _open_download(self):
+        """给两个下载入口：网盘（普通用户）/ GitHub（懂的用户，不限速）。
+
+        不分人群一刀切：网盘是给不会用代理的人准备的，但懂 GitHub 的用户
+        没必要陪着忍受百度限速。
+        """
         import webbrowser
-        url = (self._update_info or {}).get("url") or config.DOWNLOAD_URL
-        webbrowser.open(url)
+        info = self._update_info or {}
+        pan = info.get("url") or config.DOWNLOAD_URL
+        gh = info.get("url_github") or config.GITHUB_RELEASES_URL
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title("下载新版")
+        dlg.transient(self.root)
+        dlg.resizable(False, False)
+        frame = ttk.Frame(dlg, padding=16)
+        frame.pack()
+
+        ttk.Label(frame, text=f"视频下载器 v{info.get('version', '')}",
+                  font=("", 10)).pack(anchor="w")
+        if info.get("notes"):
+            ttk.Label(frame, text=info["notes"], foreground="#666").pack(
+                anchor="w", pady=(2, 0))
+        ttk.Label(frame, text="网盘非会员会限速；能上 GitHub 的建议走 GitHub。",
+                  foreground="#aaa", font=("", 8)).pack(anchor="w", pady=(8, 10))
+
+        row = ttk.Frame(frame)
+        row.pack(fill="x")
+
+        def go(url):
+            webbrowser.open(url)
+            dlg.destroy()
+
+        ttk.Button(row, text="从网盘下载", command=lambda: go(pan)).pack(
+            side="left")
+        ttk.Button(row, text="从 GitHub 下载", command=lambda: go(gh)).pack(
+            side="left", padx=(8, 0))
+        ttk.Button(row, text="取消", command=dlg.destroy).pack(side="right")
+
+        # 贴着主窗口居中，别弹到屏幕角落
+        dlg.update_idletasks()
+        x = self.root.winfo_rootx() + (
+            self.root.winfo_width() - dlg.winfo_width()) // 2
+        y = self.root.winfo_rooty() + (
+            self.root.winfo_height() - dlg.winfo_height()) // 3
+        dlg.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+        dlg.grab_set()
 
     def _clear(self):
         if self.busy:

@@ -158,14 +158,18 @@ SETTINGS_FILE = os.path.join(USER_DATA_DIR, "settings.json")
 # ---- 版本与更新检查 ----
 # ⚠️ VERSION 必须与 build.spec 的 filevers/prodvers/FileVersion/ProductVersion
 # 四处同步，否则「检查更新」会误判（发版流程里已列为必查项）。
-VERSION = "2026.10.18.5"
+VERSION = "2026.10.18.6"
 
 # 版本清单放 Gitee：国内直连可达，不需要用户有代理。
-# 内容形如 {"version": "2026.10.19", "notes": "修复抖音", "url": "下载页"}
+# 内容形如 {"version": "2026.10.19", "notes": "修复抖音",
+#           "url": "网盘下载页", "url_github": "GitHub Releases"}
 UPDATE_JSON_URL = "https://gitee.com/peace_heng/heng/raw/master/version.json"
 # 有新版时让用户去的下载页。这是**文件夹**分享链接：文件夹里的文件可以换，
 # 链接永久不变（单文件分享一换文件链接就失效，踩过）。
 DOWNLOAD_URL = "https://pan.baidu.com/s/1DIrE9sLz71D2aeef2bRAPQ?pwd=g6r8"
+# 懂 GitHub 的用户走这里，不用忍受网盘限速（清单里没给 url_github 时用它兜底）
+GITHUB_RELEASES_URL = ("https://github.com/heng35040-hub/video-downloader"
+                       "/releases/latest")
 # 自动检查的最小间隔（秒）。启动时最多每 24 小时问一次，手动按钮不受限
 UPDATE_CHECK_INTERVAL = 24 * 3600
 
