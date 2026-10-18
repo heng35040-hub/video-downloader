@@ -92,6 +92,7 @@ except Exception:                          # 装不上也要能用，退回纯�
 
 import backends                            # noqa: E402
 import errors                              # noqa: E402
+import updater                             # noqa: E402
 
 PANE_IDLE = "#f2f2f2"
 PANE_ACTIVE = "#d6e9ff"
@@ -489,6 +490,9 @@ class App:
         self._quality_map = dict(config.QUALITY_HEIGHT)
         self._probe_seq = 0        # 链接一换就让上一次探测结果作废
         self._probe_after = None   # 防抖定时器句柄
+        # 检查更新：_update_info 有值说明发现了新版，按钮会变成下载入口
+        self._update_info = None
+        self._checking_update = False
 
         self._build()
         self._select("youtube")
@@ -497,6 +501,7 @@ class App:
         self._hint()
         self.root.after(700, self._check_missing_tools)
         self.root.after(2500, self._bg_selfupdate)
+        self.root.after(4000, self._auto_check_update)
 
     # ------------------------------------------------------------------ 界面
     def _build(self):
@@ -603,12 +608,19 @@ class App:
         ttk.Label(outer, textvariable=self.detail_var,
                   foreground="#666").pack(fill="x", pady=(4, 0))
 
-        # 底部一行：左边「创建桌面快捷方式」，右边打赏（DONATE_URL 留空则不显示）
+        # 底部一行：左边「创建桌面快捷方式」「检查更新」，右边打赏
+        # （DONATE_URL 留空则不显示）
         bottom = ttk.Frame(outer)
         bottom.pack(fill="x")
         self.shortcut_btn = ttk.Button(bottom, text="创建桌面快捷方式",
                                        command=self._make_shortcut)
         self.shortcut_btn.pack(side="left")
+        self.update_btn = ttk.Button(bottom, text="检查更新",
+                                     command=lambda: self._check_update(True))
+        self.update_btn.pack(side="left", padx=(8, 0))
+        # 版本号放在最不起眼的位置，但用户报问题时能一眼对上号
+        ttk.Label(bottom, text=f"v{config.VERSION}", foreground="#aaa",
+                  font=("", 8)).pack(side="left", padx=(8, 0))
         if config.DONATE_URL:
             import webbrowser
             ttk.Button(bottom, text="☕ 支持作者（自愿）",
@@ -859,6 +871,60 @@ class App:
 
         threading.Thread(target=work, daemon=True).start()
 
+    # ------------------------------------------------------------ 检查更新
+    def _auto_check_update(self):
+        """启动后静默检查一次，最多每 24 小时一次。
+
+        放启动 4 秒后：别和启动自检、ffmpeg 检测抢那几秒。
+        失败完全静默 —— 检查更新不该让用户看到任何错误。
+        """
+        try:
+            last = float(_load_settings().get("last_update_check") or 0)
+        except (TypeError, ValueError):
+            last = 0
+        if time.time() - last < config.UPDATE_CHECK_INTERVAL:
+            return
+        self._check_update(False)
+
+    def _check_update(self, manual):
+        """manual=True 是用户点按钮：要有明确反馈，且不受 24 小时限制。"""
+        if self._checking_update:
+            return
+        self._checking_update = True
+        self.update_btn.configure(state="disabled")
+        if manual:
+            self.status_var.set("正在检查更新…")
+
+        def work():
+            info = updater.check(config.UPDATE_JSON_URL, config.VERSION)
+            # 无论成败都记时间：失败时别每次启动都重试一遍
+            data = _load_settings()
+            data["last_update_check"] = time.time()
+            _save_settings(data)
+            self.q.put(("update_result", {"info": info, "manual": manual}))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_update_result(self, info, manual):
+        self._checking_update = False
+        self.update_btn.configure(state="normal")
+        if info:
+            self._update_info = info
+            note = f"（{info['notes']}）" if info.get("notes") else ""
+            self.status_var.set(
+                f"发现新版 v{info['version']}{note}，点左下角「下载新版」")
+            # 按钮就地变成下载入口，用户不用再去别处找
+            self.update_btn.configure(
+                text=f"下载新版 v{info['version']}",
+                command=self._open_download)
+        elif manual:
+            self.status_var.set("已是最新版（或暂时连不上更新服务器）")
+
+    def _open_download(self):
+        import webbrowser
+        url = (self._update_info or {}).get("url") or config.DOWNLOAD_URL
+        webbrowser.open(url)
+
     def _clear(self):
         if self.busy:
             # 下载中清空只会清掉界面、后台任务照跑，用户很容易以为已经取消
@@ -1080,6 +1146,8 @@ class App:
             messagebox.showerror("B站登录", kw.get("text", ""))
         elif kind == "proxy_test":
             self.proxy_hint_var.set(kw.get("text", ""))
+        elif kind == "update_result":
+            self._on_update_result(kw.get("info"), kw.get("manual"))
         elif kind == "crash":
             logging.error("worker 崩溃:\n%s", kw.get("text"))
             messagebox.showerror("程序出错",

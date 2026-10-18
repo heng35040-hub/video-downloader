@@ -155,6 +155,20 @@ PROFILE_BILI = os.path.join(USER_DATA_DIR, "profile_bili")
 # 界面偏好 +「使用须知已同意」标记都存这里（JSON）
 SETTINGS_FILE = os.path.join(USER_DATA_DIR, "settings.json")
 
+# ---- 版本与更新检查 ----
+# ⚠️ VERSION 必须与 build.spec 的 filevers/prodvers/FileVersion/ProductVersion
+# 四处同步，否则「检查更新」会误判（发版流程里已列为必查项）。
+VERSION = "2026.10.18.5"
+
+# 版本清单放 Gitee：国内直连可达，不需要用户有代理。
+# 内容形如 {"version": "2026.10.19", "notes": "修复抖音", "url": "下载页"}
+UPDATE_JSON_URL = "https://gitee.com/peace_heng/heng/raw/master/version.json"
+# 有新版时让用户去的下载页（百度网盘；能上 GitHub 的用户 README 里有 Releases）
+DOWNLOAD_URL = "https://pan.baidu.com/s/1eVnkIJQ5dcJEEImVM_687A?pwd=ycrd"
+# 自动检查的最小间隔（秒）。启动时最多每 24 小时问一次，手动按钮不受限
+UPDATE_CHECK_INTERVAL = 24 * 3600
+
+
 # ---- 代理（自动探测，开源用户端口各不相同）----
 def _handshake_proxy(host, port):
     """握手判断这个端口跑的是 SOCKS5 还是 HTTP 代理。
