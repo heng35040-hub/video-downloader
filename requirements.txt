@@ -6,7 +6,11 @@
 # 首次启动不需要联网下载它。ffmpeg 仍然需要，程序首次启动会从官方源
 # （gyan.dev）一键下载到 tools/ 目录，也可以自行安装并确保它在 PATH 中。
 
-requests>=2.31.0
+requests[socks]>=2.31.0
+# PySocks（上面 [socks] 的实质依赖）：没有它，填 socks5:// / socks5h://
+# 代理会直接报 "Missing dependencies for SOCKS support"。自建 VPS 上跑的
+# v2ray / xray / ss-local 默认就是 SOCKS，所以这不是可选项。
+PySocks>=1.7.1
 playwright>=1.40.0
 tkinterdnd2>=0.3.0
 yt-dlp>=2024.1.1

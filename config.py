@@ -156,19 +156,74 @@ PROFILE_BILI = os.path.join(USER_DATA_DIR, "profile_bili")
 SETTINGS_FILE = os.path.join(USER_DATA_DIR, "settings.json")
 
 # ---- 代理（自动探测，开源用户端口各不相同）----
+def _handshake_proxy(host, port):
+    """握手判断这个端口跑的是 SOCKS5 还是 HTTP 代理。
+
+    返回 "socks5h" / "http" / None（端口没开或两个都不认）。
+    自建 v2ray / xray / ss-local 默认开在 1080、10808，跑的什么协议只有握手
+    才知道 —— 硬编码成 http 会把 SOCKS 端口当 HTTP 用，报错还很难查。
+    """
+    import socket
+    # 先试 SOCKS5：发 \x05\x01\x00（版本5，1种方法，无需认证），期待 \x05\x00
+    try:
+        with socket.create_connection((host, port), timeout=0.6) as s:
+            s.settimeout(0.6)
+            s.sendall(b"\x05\x01\x00")
+            resp = s.recv(2)
+            if len(resp) == 2 and resp[0] == 5 and resp[1] == 0:
+                return "socks5h"
+    except OSError:
+        pass
+    # 再试 HTTP CONNECT：期待 "HTTP/1.x ... 200"
+    try:
+        with socket.create_connection((host, port), timeout=0.6) as s:
+            s.settimeout(0.6)
+            s.sendall(b"CONNECT example.com:443 HTTP/1.0\r\n\r\n")
+            resp = s.recv(32)
+            if b"HTTP/1." in resp and b" 200 " in resp:
+                return "http"
+    except OSError:
+        pass
+    return None
+
+
+def _split_server(server):
+    """把注册表的 ProxyServer 拆成 [(协议, 地址), ...]，保持原顺序。
+
+    可能是 `127.0.0.1:7890`，也可能是
+    `http=127.0.0.1:7890;https=127.0.0.1:7890;socks=127.0.0.1:7891`。
+    """
+    out = []
+    for part in (server or "").split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        scheme, addr = "http", part
+        if "=" in part:
+            k, _, v = part.partition("=")
+            v = v.strip()
+            if not v:
+                continue
+            addr = v
+            if k.strip().lower() in ("socks", "socks5", "socks4"):
+                scheme = "socks5h"
+        out.append((scheme, addr.replace("http://", "").replace("socks5://", "")
+                    .strip("/")))
+    return out
+
+
 def _detect_proxy():
     """探测本机代理，返回 (proxy, host, port)。
 
     顺序：Windows 系统代理设置（用户浏览器在用的那个，最可靠）→
-    并发试常见代理端口 → 兜底 Clash 默认 7897（连不上时预检会给出
-    明确提示，用户可改 config.py）。只做 TCP 探测，不做真实请求。
+    并发试常见 HTTP 端口 → SOCKS 常见端口握手认协议 → 兜底 7897。
+    连不上时预检会给出提示，用户可在界面的代理设置里手动填。
 
-    端口探测**必须并发**：串行时「一个代理都没开」要等 7 × timeout，
-    实测约 1.05 秒；而「干净机器、没装代理」恰恰是新用户最常见的状态，
-    每次启动白等一秒很亏。并发后最坏约等于单个 timeout。
+    端口探测**必须并发**：串行时「一个代理都没开」要等满所有 timeout，
+    而「干净机器、没装代理」恰恰是新用户最常见的状态，每次启动白等很亏。
     """
     host = "127.0.0.1"
-    # 1) 系统代理设置
+    # 1) 系统代理设置：优先 http=，没有就退回第一项（可能是 socks=）
     try:
         import winreg
         key = winreg.OpenKey(
@@ -177,39 +232,103 @@ def _detect_proxy():
         enable, _ = winreg.QueryValueEx(key, "ProxyEnable")
         if enable:
             server, _ = winreg.QueryValueEx(key, "ProxyServer")
-            if server:
-                if "=" in server:          # 形如 http=127.0.0.1:7890;https=...
-                    for part in server.split(";"):
-                        if part.startswith(("http=", "https=")):
-                            server = part.split("=", 1)[1]
-                            break
-                server = server.replace("http://", "").strip("/")
-                if ":" in server:
-                    ph, pp = server.rsplit(":", 1)
-                    if pp.isdigit():
-                        return f"http://{ph}:{pp}", ph, int(pp)
+            parts = _split_server(server)
+            # http 优先 —— Clash 的混合端口两种协议都通，http 兼容性最好；
+            # 只有 socks= 时也认
+            picked = (next((p for p in parts if p[0] == "http"), None)
+                      or (parts[0] if parts else None))
+            if picked:
+                scheme, addr = picked
+                ph, _, pp = addr.rpartition(":")
+                if ph and pp.isdigit():
+                    return f"{scheme}://{ph}:{pp}", ph, int(pp)
     except Exception:
         pass
-    # 2) 常见端口并发探测
-    #    （Clash Verge / Clash / v2rayN / 通用 socks / privoxy）
+
+    # 2) 常见 HTTP 端口，按约定直接用（本地这些端口被非代理服务占用极少）
+    #    Clash/Clash Verge/ClashX 7897 · Clash for Windows 7890 ·
+    #    v2rayN 10809 · Privoxy 8118
     import socket
     from concurrent.futures import ThreadPoolExecutor
 
-    ports = (7897, 7890, 10809, 1080, 8118, 2080, 8889)
+    http_ports = (7897, 7890, 10809, 8118, 2080, 8889)
 
-    def _probe(port):
+    def _open(port):
         try:
             socket.create_connection((host, port), timeout=0.3).close()
             return port
         except OSError:
             return None
 
-    with ThreadPoolExecutor(max_workers=len(ports)) as pool:
-        for port in pool.map(_probe, ports):
-            if port is not None:
+    with ThreadPoolExecutor(max_workers=len(http_ports)) as pool:
+        for port in pool.map(_open, http_ports):
+            if port:
                 return f"http://{host}:{port}", host, port
-    # 3) 兜底
+
+    # 3) SOCKS 常见端口：握手认出协议才算。
+    #    这些端口也可能被别的服务占着，不能盲信
+    for port in (1080, 1081, 10808, 9050, 9150):
+        scheme = _handshake_proxy(host, port)
+        if scheme:
+            return f"{scheme}://{host}:{port}", host, port
+
+    # 4) 兜底
     return "http://127.0.0.1:7897", "127.0.0.1", 7897
+
+
+PROXY_SCHEMES = ("http", "https", "socks5", "socks5h", "socks4")
+# 没写协议时按端口猜：这些端口业内默认是 SOCKS
+_SOCKS_LIKE_PORTS = (1080, 1081, 10808, 10809, 9050, 9150)
+
+
+def resolve_proxy(text=""):
+    """把用户填的代理地址解析成 (proxy, host, port, 错误提示)。
+
+    text 为空 → 自动探测。否则接受：
+      http://127.0.0.1:7890        HTTP 代理（Clash for Windows）
+      socks5h://127.0.0.1:10808    SOCKS5，域名交给代理解析（推荐）
+      socks5://user:pass@ip:port   带认证的透传，yt-dlp / requests 都认
+      127.0.0.1:10808              没写协议时按端口猜，其余按 http
+    解析失败返回 (None, None, None, 原因)，调用方提示用户改格式。
+    """
+    import urllib.parse as up
+
+    text = (text or "").strip()
+    if not text:
+        proxy, h, p = _detect_proxy()
+        return proxy, h, p, ""
+
+    raw = text
+    if "://" not in raw:
+        # 用户只写了 host:port —— 按端口猜协议，别逼人家记协议名
+        addr = raw.split("/", 1)[0]
+        h, _, pp = addr.rpartition(":")
+        guess = ("socks5h" if pp.isdigit() and int(pp) in _SOCKS_LIKE_PORTS
+                 else "http")
+        raw = f"{guess}://{raw}"
+
+    try:
+        u = up.urlsplit(raw)
+    except ValueError as exc:
+        return None, None, None, f"地址解析不了：{exc}"
+
+    scheme = (u.scheme or "").lower()
+    if scheme not in PROXY_SCHEMES:
+        return None, None, None, (
+            "协议不认识：%s（支持 %s）" % (u.scheme or "空", " / ".join(PROXY_SCHEMES)))
+    try:
+        h, pp = u.hostname, u.port
+    except ValueError as exc:
+        return None, None, None, f"地址格式不对：{exc}"
+    if not h or not pp:
+        return None, None, None, "要写全主机和端口，例如 socks5h://127.0.0.1:10808"
+
+    # socks5 → socks5h：被墙域名必须让代理解析 DNS，否则本地解析不了
+    norm = "socks5h" if scheme == "socks5" else scheme
+    if u.username or u.password:
+        user, pw = up.unquote(u.username), up.unquote(u.password)
+        return f"{norm}://{user}:{pw}@{h}:{pp}", h, pp, ""
+    return f"{norm}://{h}:{pp}", h, pp, ""
 
 
 PROXY, PROXY_HOST, PROXY_PORT = _detect_proxy()

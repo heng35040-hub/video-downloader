@@ -28,9 +28,23 @@ class TestFriendly:
         assert errors.friendly("Video unavailable", "youtube") == \
             "视频不可用或已设为私享。"
 
-    def test_youtube_proxy_hint_mentions_config(self):
+    def test_youtube_proxy_hint_points_to_ui(self):
+        # 以前提示用户改 config.py —— 终端用户改不了源码，现在指向界面
         msg = errors.friendly("Connection refused", "youtube")
-        assert "config.py" in msg
+        assert "代理" in msg
+        assert "config.py" not in msg
+
+    def test_proxy_hint_shows_given_proxy(self):
+        # 用户手填了代理时，提示要显示手填的那个，不能显示启动时探测到的
+        msg = errors.friendly("Connection refused", "youtube",
+                              proxy="socks5h://10.0.0.1:10808")
+        assert "socks5h://10.0.0.1:10808" in msg
+
+    def test_proxy_hint_defaults_to_detected(self):
+        # 没传 proxy 时退回启动时探测到的地址，行为与以前一致
+        msg = errors.friendly("Connection refused", "youtube")
+        import config
+        assert config.PROXY in msg
 
     def test_x_deleted_post(self):
         assert "不存在" in errors.friendly("404 Not Found", "x")

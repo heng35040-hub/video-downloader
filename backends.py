@@ -46,7 +46,7 @@ class Job:
         procutil.kill_tree(proc)
 
 
-def _base_args(source, outdir, use_cookies, max_height=None):
+def _base_args(source, outdir, use_cookies, max_height=None, proxy=None):
     args = [
         *config.YTDLP_CMD,
         "--no-playlist",        # 贴了带 &list= 的链接时，别默默下一整个播放列表
@@ -75,7 +75,8 @@ def _base_args(source, outdir, use_cookies, max_height=None):
         "--print", "video:TITLE %(title)j",
     ]
     if source in _PROXY_SOURCES:
-        args += ["--proxy", config.PROXY]   # 被墙站，必须走本机代理
+        # proxy=None 时用启动时探测到的那个；用户手填的优先
+        args += ["--proxy", (proxy or config.PROXY).strip()]
     else:
         # 国内站必须直连。显式传空串关掉代理，同时 build_env 会清掉代理环境变量
         args += ["--proxy", ""]
@@ -109,7 +110,7 @@ def _short_err(stderr, limit=120):
     return "未知原因"
 
 
-def probe_formats(url, source, use_cookies=False, timeout=45):
+def probe_formats(url, source, use_cookies=False, timeout=45, proxy=None):
     """探测这条链接**实际能拿到**的画质。返回 (heights, error)。
 
     heights 是从高到低、去重的高度列表；探不到时为 None，error 给出原因。
@@ -126,7 +127,7 @@ def probe_formats(url, source, use_cookies=False, timeout=45):
     ]
     blocked = source in _PROXY_SOURCES
     if blocked:
-        cmd += ["--proxy", config.PROXY]
+        cmd += ["--proxy", (proxy or config.PROXY).strip()]
     else:
         cmd += ["--proxy", ""]
         if use_cookies and source == "bilibili":
@@ -232,7 +233,7 @@ def _ixigua_cookie_file(emit):
 
 
 def download_ytdlp(url, source, outdir, use_cookies, emit, job,
-                   max_height=None):
+                   max_height=None, proxy=None):
     """跑 yt-dlp。返回 (成功?, 文件路径 或 错误文本)。
 
     emit(kind, **kw) 会在工作线程里被调用；它只往队列里塞事件，
@@ -243,7 +244,7 @@ def download_ytdlp(url, source, outdir, use_cookies, emit, job,
         return False, ("内置的 yt-dlp 没能加载（打包或依赖不完整）。\n"
                        "请重新下载最新版程序；从源码运行请先执行："
                        "pip install -r requirements.txt")
-    cmd = _base_args(source, outdir, use_cookies, max_height) + [url]
+    cmd = _base_args(source, outdir, use_cookies, max_height, proxy) + [url]
     if source == "ixigua":
         cookie_file = _ixigua_cookie_file(emit)
         if cookie_file:
@@ -319,5 +320,6 @@ def download_ytdlp(url, source, outdir, use_cookies, emit, job,
                        f"目录: {outdir!r}\n"
                        f"末几行: {lines[-5:]}")
 
-    # 失败：把最后几十行交给 errors 翻译
-    return False, friendly("\n".join(lines[-40:]), source)
+    # 失败：把最后几十行交给 errors 翻译。带上实际用的代理，
+    # 提示里显示手填的那个，而不是启动时探测到的
+    return False, friendly("\n".join(lines[-40:]), source, proxy=proxy)

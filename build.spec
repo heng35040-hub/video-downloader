@@ -20,6 +20,12 @@ hiddenimports = [
     "requests",
     "playwright",
     "playwright.sync_api",
+    # PySocks —— requests / yt-dlp 的 SOCKS 代理支持靠它。**必须显式列出**：
+    # requests 是在函数里 `import socks`（延迟导入），PyInstaller 的静态分析
+    # 不跟，漏打包的后果是填 socks5:// 代理时报
+    # "Missing dependencies for SOCKS support"。
+    "socks",
+    "sockshandler",
     # 内置的 yt-dlp。yt_dlp 自带官方 PyInstaller hook
     # （entry point pyinstaller40 → yt_dlp.__pyinstaller），显式列出来
     # 是为了确保 hook 一定触发，把 1000+ 个 extractor 子模块收全。
@@ -121,8 +127,8 @@ icon_path = None
 #    曾经就因为漏改，v2026.10.16 的 exe 里嵌的还是 2026.10.15.0。
 ver_info = versioninfo.VSVersionInfo(
     ffi=versioninfo.FixedFileInfo(
-        filevers=(2026, 10, 18, 3),
-        prodvers=(2026, 10, 18, 3),
+        filevers=(2026, 10, 18, 4),
+        prodvers=(2026, 10, 18, 4),
         mask=0x3F,
         flags=0,
         OS=0x40004,
@@ -138,12 +144,12 @@ ver_info = versioninfo.VSVersionInfo(
                     [
                         versioninfo.StringStruct("CompanyName", "Video Downloader"),
                         versioninfo.StringStruct("FileDescription", "Video Downloader"),
-                        versioninfo.StringStruct("FileVersion", "2026.10.18.3"),
+                        versioninfo.StringStruct("FileVersion", "2026.10.18.4"),
                         versioninfo.StringStruct("InternalName", "VideoDownloader"),
                         versioninfo.StringStruct("LegalCopyright", "MIT License"),
                         versioninfo.StringStruct("OriginalFilename", "VideoDownloader.exe"),
                         versioninfo.StringStruct("ProductName", "Video Downloader"),
-                        versioninfo.StringStruct("ProductVersion", "2026.10.18.3"),
+                        versioninfo.StringStruct("ProductVersion", "2026.10.18.4"),
                     ],
                 ),
             ],

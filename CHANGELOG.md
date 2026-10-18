@@ -5,6 +5,36 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)（采用日期格式 YYYY.MM.DD）。
 
+## [2026.10.18.4] - 2026-10-18
+
+### 新增
+- **界面加了「代理」一栏和「测试」按钮**：留空 = 自动探测（原有逻辑不变），
+  也可以手填 `http://` / `socks5h://`（支持 `user:pass@`）。自建 VPS 上跑的
+  v2ray / xray / ss-local 大多是 SOCKS、端口也不标准，探测不出来，只能让用户
+  自己写。填的值记进 settings.json，重启仍在
+- 「测试」不只做 TCP 连通，还会真发一次请求到 x.com 验证能不能翻墙 ——
+  端口可能被别的服务占着（比如 8080 上跑的本地网页服务器），TCP 通但代理
+  用不了，只探端口会误判
+
+### 修复
+- **完全不支持 SOCKS5**：requests 的 SOCKS 支持依赖 PySocks，而它既没在
+  requirements.txt 里声明、也没被打包，填 `socks5://` 只会得到
+  `Missing dependencies for SOCKS support`。现在加进了两端，并在
+  build.spec 的 hiddenimports 里显式列出（requests 是函数内延迟导入
+  `socks`，PyInstaller 的静态分析不跟）
+- 系统代理只解析 `http=`，`socks=` 被丢掉（`ProxyServer` 形如
+  `http=127.0.0.1:7890;https=…;socks=…`）。现在两种都认，http 优先
+- `socks5://` 统一改写为 `socks5h://` —— 被墙域名必须让代理解析 DNS，
+  本地解析不了
+- 端口 1080 原来被当 HTTP 端口探测。1080 业内默认是 SOCKS，硬当 HTTP 会把
+  SOCKS 端口当 HTTP 用、报错还难查。现在 SOCKS 常见端口靠**握手**认协议
+- 代理相关的错误提示还写着「端口不同可在 config.py 里改」—— 用户装的是
+  exe，改不了源码。现在指向界面
+- 「连不上代理」提示现在显示**实际使用的代理地址**（用户手填时显示手填的，
+  不再显示启动时探测到的那个）；预检提示也不再写死「请先启动 Clash」
+- 新增 `tests/test_proxy.py`：23 项守住代理解析、ProxyServer 拆分，以及
+  「用户填的代理真的传给了 yt-dlp」（下载和探测两条路径），总测试 111 → 136
+
 ## [2026.10.18.3] - 2026-10-18
 
 ### 修复

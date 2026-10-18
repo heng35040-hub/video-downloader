@@ -21,9 +21,14 @@ def _last_meaningful(raw):
     return ""
 
 
-def friendly(raw, source):
-    """raw: 后端收集到的全部输出；source: youtube / bilibili / douyin / x。"""
+def friendly(raw, source, proxy=None):
+    """raw: 后端收集到的全部输出；source: youtube / bilibili / douyin / x。
+
+    proxy: 这次实际用的代理地址。用户手填时要显示手填的那个，
+    不能显示启动时探测到的——指着一个没在用的地址让用户排查，越查越晕。
+    """
     s = (raw or "").lower()
+    proxy_disp = proxy or PROXY
 
     if source == "youtube":
         if any(k in s for k in ("sign in", "not a bot", "confirm you're not a bot",
@@ -32,8 +37,8 @@ def friendly(raw, source):
                     "若一直失败，需要提供 cookies 文件。")
         if any(k in s for k in ("connection refused", "failed to resolve",
                                 "timed out", "proxy")):
-            return (f"连不上代理（{PROXY}）。请确认代理软件已经启动；"
-                    "端口不同可在 config.py 里改。")
+            return (f"连不上代理（{proxy_disp}）。请确认代理软件已经启动；"
+                    "端口不同可在界面「代理」一栏填。")
         if "video unavailable" in s or "private video" in s:
             return "视频不可用或已设为私享。"
         if "requested format" in s:
@@ -61,8 +66,8 @@ def friendly(raw, source):
                     "cookies\\x.txt 再试。")
         if any(k in s for k in ("connection refused", "failed to resolve",
                                 "timed out", "proxy")):
-            return (f"连不上代理（{PROXY}）。请确认代理软件已经启动；"
-                    "端口不同可在 config.py 里改。")
+            return (f"连不上代理（{proxy_disp}）。请确认代理软件已经启动；"
+                    "端口不同可在界面「代理」一栏填。")
         if any(k in s for k in ("404", "not found", "no longer exists",
                                 "has been deleted", "suspended")):
             return "帖子不存在、已删除，或发帖账号被封禁。"
@@ -76,8 +81,8 @@ def friendly(raw, source):
                     "需要登录的内容目前不支持。")
         if any(k in s for k in ("connection refused", "failed to resolve",
                                 "timed out", "proxy")):
-            return (f"连不上代理（{PROXY}）。请确认代理软件已经启动；"
-                    "端口不同可在 config.py 里改。")
+            return (f"连不上代理（{proxy_disp}）。请确认代理软件已经启动；"
+                    "端口不同可在界面「代理」一栏填。")
         if any(k in s for k in ("not found", "404", "private")):
             return "帖子不存在、已删除，或是私密账号。"
 
@@ -104,8 +109,8 @@ def friendly(raw, source):
                     "仍失败多半是这条视频需要登录或地区受限。")
         if any(k in s for k in ("connection refused", "failed to resolve",
                                 "timed out", "proxy")):
-            return (f"连不上代理（{PROXY}）。请确认代理软件已经启动；"
-                    "端口不同可在 config.py 里改。")
+            return (f"连不上代理（{proxy_disp}）。请确认代理软件已经启动；"
+                    "端口不同可在界面「代理」一栏填。")
 
     tail = _last_meaningful(raw)
     return "下载失败：" + (tail or "未知错误")
@@ -152,7 +157,8 @@ def check_prereqs(source, outdir, cookies_path=None, use_cookies=False,
             socket.create_connection((proxy_host, proxy_port), timeout=1).close()
         except OSError:
             return (f"代理没开（{proxy_host}:{proxy_port}）。"
-                    "YouTube 必须走代理，请先启动 Clash。")
+                    "YouTube 必须走代理，请先启动代理软件，"
+                    "或在界面「代理」一栏填对地址。")
 
     if source == "bilibili" and use_cookies:
         if not cookies_path or not os.path.isfile(cookies_path):

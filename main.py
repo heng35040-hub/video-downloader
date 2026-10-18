@@ -148,37 +148,52 @@ def _fix_scaling(root):
 # 同意状态记在 settings.json 里，连同版本号一起存：正文一改，版本号跟着变，
 # 老用户会重新看到弹窗。
 # ---------------------------------------------------------------------------
-def _disclaimer_accepted():
-    """当前版本的使用须知是否已被同意过。"""
+def _load_settings():
+    """读 settings.json；读不了或内容不是 dict 就返回空 dict。"""
     import json
     try:
         with open(config.SETTINGS_FILE, encoding="utf-8") as fh:
             data = json.load(fh)
     except Exception:
-        return False
-    return (isinstance(data, dict)
-            and data.get("disclaimer_version") == config.DISCLAIMER_VERSION)
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
-def _save_disclaimer_accepted():
-    """记住「已同意」。先写临时文件再原子替换，避免写一半把设置写坏。"""
+def _save_settings(data):
+    """整体写回 settings.json。先写临时文件再原子替换，避免写一半写坏。"""
     import json
-    data = {}
     try:
-        with open(config.SETTINGS_FILE, encoding="utf-8") as fh:
-            loaded = json.load(fh)
-            if isinstance(loaded, dict):
-                data = loaded
-    except Exception:
-        data = {}
-    data["disclaimer_version"] = config.DISCLAIMER_VERSION
-    tmp = config.SETTINGS_FILE + ".tmp"
-    try:
+        os.makedirs(os.path.dirname(config.SETTINGS_FILE), exist_ok=True)
+        tmp = config.SETTINGS_FILE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(data, fh, ensure_ascii=False, indent=2)
         os.replace(tmp, config.SETTINGS_FILE)
     except Exception:
         logging.exception("写入设置文件失败")
+
+
+def _disclaimer_accepted():
+    """当前版本的使用须知是否已被同意过。"""
+    return (_load_settings().get("disclaimer_version")
+            == config.DISCLAIMER_VERSION)
+
+
+def _save_disclaimer_accepted():
+    """记住「已同意」。"""
+    data = _load_settings()
+    data["disclaimer_version"] = config.DISCLAIMER_VERSION
+    _save_settings(data)
+
+
+def _load_proxy_setting():
+    """用户手填的代理地址；空串 = 自动探测。"""
+    return _load_settings().get("proxy") or ""
+
+
+def _save_proxy_setting(value):
+    data = _load_settings()
+    data["proxy"] = value
+    _save_settings(data)
 
 
 def _show_disclaimer(root):
@@ -461,6 +476,10 @@ class App:
         self.outdir_var = tk.StringVar(value=config.OUTDIR_DEFAULT)
         self.cookie_var = tk.BooleanVar(value=False)
         self.quality_var = tk.StringVar(value=config.QUALITY_OPTIONS[0])
+        # 代理：默认留空 = 自动探测（见 config._detect_proxy）。用户可以手填
+        # http:// / socks5h://，也照顾自建 VPS 代理和非标准端口
+        self.proxy_var = tk.StringVar(value=_load_proxy_setting())
+        self.proxy_hint_var = tk.StringVar()
         self.status_var = tk.StringVar(value="")
         self.detail_var = tk.StringVar(value="")
         self.percent_var = tk.StringVar(value="0%")
@@ -541,6 +560,22 @@ class App:
         ttk.Entry(out_row, textvariable=self.outdir_var).pack(
             side="left", fill="x", expand=True, padx=4)
         ttk.Button(out_row, text="浏览…", command=self._browse).pack(side="left")
+
+        # ---- 代理 ----
+        # 只影响被墙平台（YouTube / X / Instagram / TikTok），国内平台一律直连。
+        # 留空 = 自动探测（系统代理 → 常见端口）。留一个手填入口是必须的：
+        # 自建 VPS 的 v2ray / xray / ss-local 大多是 SOCKS，端口也不标准，
+        # 探测不出来，只能让用户自己写。
+        proxy_row = ttk.Frame(outer)
+        proxy_row.pack(fill="x", pady=(6, 0))
+        ttk.Label(proxy_row, text="代理：").pack(side="left")
+        ttk.Entry(proxy_row, textvariable=self.proxy_var).pack(
+            side="left", fill="x", expand=True, padx=4)
+        ttk.Button(proxy_row, text="测试",
+                   command=self._test_proxy).pack(side="left")
+        ttk.Label(outer, textvariable=self.proxy_hint_var, foreground="#aaa",
+                  font=("", 8)).pack(anchor="w", pady=(2, 0))
+        self._refresh_proxy_hint()
 
         btns = ttk.Frame(outer)
         btns.pack(fill="x", pady=10)
@@ -626,6 +661,53 @@ class App:
         if not self.dnd_ok:
             self.status_var.set("拖拽组件没装上 —— 点格子后粘贴链接一样能用。")
 
+    # ------------------------------------------------------------ 代理
+    def _refresh_proxy_hint(self):
+        """刷新代理输入框下面的灰字说明。"""
+        if self.proxy_var.get().strip():
+            hint = ("已手动指定。只影响 YouTube / X / Instagram / TikTok；"
+                    "国内平台始终直连。")
+        else:
+            hint = (f"留空 = 自动探测（当前：{config.PROXY}）。"
+                    "只影响 YouTube / X / Instagram / TikTok；国内平台始终直连。")
+        self.proxy_hint_var.set(hint)
+
+    def _test_proxy(self):
+        """「测试」按钮：先 TCP 连通，再真发一次请求验证能翻墙。
+
+        只做 TCP 探测是不够的 —— 那个端口可能被别的服务占着（比如 8080 上的
+        本地网页服务器），TCP 通但代理用不了。
+        """
+        raw = self.proxy_var.get()
+        proxy, host, port, err = config.resolve_proxy(raw)
+        if err:
+            messagebox.showerror("代理地址不对", err)
+            return
+        import socket
+        try:
+            socket.create_connection((host, port), timeout=3).close()
+        except OSError:
+            self.proxy_hint_var.set(
+                f"连不上 {host}:{port} —— 端口是不是没开？")
+            return
+
+        _save_proxy_setting(raw.strip())
+        self.proxy_hint_var.set(f"{host}:{port} 端口通，正在实际验证…")
+
+        def work():
+            try:
+                import requests
+                s = requests.Session()
+                s.trust_env = False
+                s.proxies = {"http": proxy, "https": proxy}
+                r = s.get("https://x.com/", timeout=20)
+                msg = f"能翻墙 ✓（x.com 返回 {r.status_code}）"
+            except Exception as exc:
+                msg = f"端口通但用不了：{type(exc).__name__} {str(exc)[:60]}"
+            self.q.put(("proxy_test", {"text": f"{proxy} {msg}"}))
+
+        threading.Thread(target=work, daemon=True).start()
+
     # ------------------------------------------------------------ B站登录
     def _bili_login(self):
         """开浏览器让用户扫码，成功后把登录态写成 cookies.txt。
@@ -673,15 +755,21 @@ class App:
         self._probe_seq += 1
         seq = self._probe_seq
         use_cookies = bool(self.cookie_var.get()) and source == "bilibili"
+        # 探测也要走用户在界面上填的代理，否则「测试」能过、下载另一套
+        proxy, _, _, perr = config.resolve_proxy(self.proxy_var.get())
+        if perr:
+            proxy = None
         self.status_var.set("正在读取这条视频支持的画质…")
 
         def work():
             try:
-                heights, err = backends.probe_formats(url, source, use_cookies)
+                heights, err = backends.probe_formats(
+                    url, source, use_cookies, proxy=proxy)
             except Exception as exc:
                 heights, err = None, f"{type(exc).__name__}"
             self.q.put(("qualities", {"seq": seq, "source": source,
-                                      "heights": heights, "err": err}))
+                                      "heights": heights, "err": err,
+                                      "proxy": proxy}))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -824,6 +912,12 @@ class App:
         # 画质上限从当前下拉框的文字反查 —— 标签可能带「（需登录）」后缀，
         # 不能直接拿 config.QUALITY_HEIGHT 查
         max_height = self._quality_map.get(self.quality_var.get())
+        # 代理：空 = 自动探测；手填要立刻校验格式，别等下载才报错
+        proxy, proxy_host, proxy_port, perr = config.resolve_proxy(
+            self.proxy_var.get())
+        if perr:
+            messagebox.showerror("代理地址不对", perr)
+            return
 
         self.busy = True
         self.go_btn.configure(state="disabled")
@@ -838,10 +932,13 @@ class App:
         self.job = backends.Job()
         self.worker = threading.Thread(
             target=self._run_tasks,
-            args=(tasks, outdir, use_cookies, max_height), daemon=True)
+            args=(tasks, outdir, use_cookies, max_height, proxy, proxy_host,
+                  proxy_port),
+            daemon=True)
         self.worker.start()
 
-    def _run_tasks(self, tasks, outdir, use_cookies, max_height=None):
+    def _run_tasks(self, tasks, outdir, use_cookies, max_height=None,
+                   proxy=None, proxy_host=None, proxy_port=None):
         def emit(kind, **kw):
             self.q.put((kind, kw))
 
@@ -856,7 +953,8 @@ class App:
 
                 problem = errors.check_prereqs(
                     source, outdir, config.COOKIES_BILI, use_cookies,
-                    config.PROXY_HOST, config.PROXY_PORT)
+                    proxy_host or config.PROXY_HOST,
+                    proxy_port or config.PROXY_PORT)
                 if problem:
                     emit("failed", source=source, text=problem)
                     continue
@@ -872,7 +970,7 @@ class App:
                 else:
                     ok, result = backends.download_ytdlp(
                         url, source, outdir, use_cookies, emit, self.job,
-                        max_height)
+                        max_height, proxy)
 
                 if ok:
                     emit("ok", source=source, text=result)
@@ -958,7 +1056,8 @@ class App:
                 return
             if err:
                 # 探不到就直说，别让固定档位看起来像是这条视频的真实画质
-                hint = errors.friendly(err, kw.get("source"))
+                hint = errors.friendly(err, kw.get("source"),
+                                       kw.get("proxy"))
                 if hint.startswith("下载失败："):
                     hint = hint[len("下载失败："):]
                 self.status_var.set(f"读不到画质列表：{hint}")
@@ -979,6 +1078,8 @@ class App:
             self.bili_login_btn.configure(state="normal")
             self.status_var.set("B站登录未完成")
             messagebox.showerror("B站登录", kw.get("text", ""))
+        elif kind == "proxy_test":
+            self.proxy_hint_var.set(kw.get("text", ""))
         elif kind == "crash":
             logging.error("worker 崩溃:\n%s", kw.get("text"))
             messagebox.showerror("程序出错",
