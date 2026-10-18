@@ -197,6 +197,22 @@ def _save_proxy_setting(value):
     _save_settings(data)
 
 
+def _load_outdir_setting():
+    """上次用的保存位置；没记过、或那个目录已经不存在时返回空串。
+
+    目录不存在必须回退默认值 —— 用户可能删了文件夹、拔了移动硬盘，
+    拿着一个不存在的路径启动，下载时才报错就太晚了。
+    """
+    path = _load_settings().get("outdir") or ""
+    return path if path and os.path.isdir(path) else ""
+
+
+def _save_outdir_setting(value):
+    data = _load_settings()
+    data["outdir"] = value or ""
+    _save_settings(data)
+
+
 def _show_disclaimer(root):
     """弹出使用须知，返回 (是否同意, 是否要建桌面快捷方式)。关窗 = 不同意。
 
@@ -500,7 +516,8 @@ class App:
         self._downloading_pane = None
 
         self.entry_var = tk.StringVar()
-        self.outdir_var = tk.StringVar(value=config.OUTDIR_DEFAULT)
+        self.outdir_var = tk.StringVar(
+            value=_load_outdir_setting() or config.OUTDIR_DEFAULT)
         self.cookie_var = tk.BooleanVar(value=False)
         self.quality_var = tk.StringVar(value=config.QUALITY_OPTIONS[0])
         # 代理：默认留空 = 自动探测（见 config._detect_proxy）。用户可以手填
@@ -936,6 +953,7 @@ class App:
             initialdir=self.outdir_var.get() or os.path.expanduser("~"))
         if path:
             self.outdir_var.set(os.path.normpath(path))
+            _save_outdir_setting(self.outdir_var.get())
 
     def _make_shortcut(self, force=False):
         """在桌面建快捷方式。起 PowerShell 要几百毫秒，丢到线程里别卡界面。"""
@@ -1116,6 +1134,8 @@ class App:
 
         # 先把所有界面变量的值取出来再交给 worker —— worker 不许碰 Tk
         outdir = self.outdir_var.get()
+        # 记住这次用的位置：下次启动直接回到这里，不用每次重选
+        _save_outdir_setting(outdir)
         use_cookies = bool(self.cookie_var.get())
         # 画质上限从当前下拉框的文字反查 —— 标签可能带「（需登录）」后缀，
         # 不能直接拿 config.QUALITY_HEIGHT 查
@@ -1590,6 +1610,11 @@ class App:
                 "还在下载", "有任务正在下载，确定要退出吗？\n未完成的文件会被删除。"):
             return
         self.alive = False          # 先停掉 after 泵，否则会打在已销毁的窗口上
+        # 手输的保存位置在关闭时也记一下（点「下载」时才存的话，只改了没下载就丢了）
+        try:
+            _save_outdir_setting(self.outdir_var.get())
+        except Exception:
+            pass
         try:
             if self.job:
                 self.job.cancel_now()
