@@ -30,6 +30,14 @@ def friendly(raw, source, proxy=None):
     s = (raw or "").lower()
     proxy_disp = proxy or PROXY
 
+    # 片段下载要靠 ffmpeg 拉流，而 ffmpeg 不支持 SOCKS 代理。
+    # 这个错误对用户完全没有自解释性（最终只看到 "ffmpeg exited with code"），
+    # 必须在这里翻成人话，否则用户只会觉得「程序坏了」。
+    if "ffmpeg does not support socks" in s:
+        return ("片段下载失败：ffmpeg 不支持 SOCKS 代理。\n"
+                "请把代理改成 http:// 地址（Clash 的混合端口通常两种协议都通），"
+                "或取消「只下载片段」整段下载。")
+
     if source == "youtube":
         if any(k in s for k in ("sign in", "not a bot", "confirm you're not a bot",
                                 "cookies", "login required")):

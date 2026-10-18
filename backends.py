@@ -46,7 +46,8 @@ class Job:
         procutil.kill_tree(proc)
 
 
-def _base_args(source, outdir, use_cookies, max_height=None, proxy=None):
+def _base_args(source, outdir, use_cookies, max_height=None, proxy=None,
+               section=None):
     args = [
         *config.YTDLP_CMD,
         "--no-playlist",        # 贴了带 &list= 的链接时，别默默下一整个播放列表
@@ -74,6 +75,13 @@ def _base_args(source, outdir, use_cookies, max_height=None, proxy=None):
         "--print", "after_move:%(filepath)j",
         "--print", "video:TITLE %(title)j",
     ]
+    if section:
+        # 只下载片段：--download-sections "*起-止"，单位秒；结束为 None 表示到片尾。
+        # 注意切割点会对齐到最近的关键帧（可能差一两秒）——要帧级精确得加
+        # --force-keyframes-at-cuts，但那会重编码整段，长视频慢得离谱，不加。
+        start, end = section
+        args += ["--download-sections",
+                 f"*{int(start)}-{'inf' if end is None else int(end)}"]
     if source in _PROXY_SOURCES:
         # proxy=None 时用启动时探测到的那个；用户手填的优先
         args += ["--proxy", (proxy or config.PROXY).strip()]
@@ -233,7 +241,7 @@ def _ixigua_cookie_file(emit):
 
 
 def download_ytdlp(url, source, outdir, use_cookies, emit, job,
-                   max_height=None, proxy=None):
+                   max_height=None, proxy=None, section=None):
     """跑 yt-dlp。返回 (成功?, 文件路径 或 错误文本)。
 
     emit(kind, **kw) 会在工作线程里被调用；它只往队列里塞事件，
@@ -244,7 +252,8 @@ def download_ytdlp(url, source, outdir, use_cookies, emit, job,
         return False, ("内置的 yt-dlp 没能加载（打包或依赖不完整）。\n"
                        "请重新下载最新版程序；从源码运行请先执行："
                        "pip install -r requirements.txt")
-    cmd = _base_args(source, outdir, use_cookies, max_height, proxy) + [url]
+    cmd = _base_args(source, outdir, use_cookies, max_height, proxy,
+                     section) + [url]
     if source == "ixigua":
         cookie_file = _ixigua_cookie_file(emit)
         if cookie_file:

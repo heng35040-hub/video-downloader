@@ -46,6 +46,15 @@ class TestFriendly:
         import config
         assert config.PROXY in msg
 
+    def test_ffmpeg_socks_is_explained(self):
+        # 片段下载 + SOCKS 代理时 ffmpeg 会报一句英文警告，最终错误却是
+        # "ffmpeg exited with code"，必须翻成人话并给出替代方案
+        msg = errors.friendly(
+            "WARNING: ffmpeg does not support SOCKS proxies. "
+            "Downloading is likely to fail.\nERROR: ffmpeg exited with code 1",
+            "youtube")
+        assert "SOCKS" in msg and "http://" in msg
+
     def test_x_deleted_post(self):
         assert "不存在" in errors.friendly("404 Not Found", "x")
 

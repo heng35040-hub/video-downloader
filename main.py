@@ -416,6 +416,32 @@ def _create_shortcut_quietly():
     threading.Thread(target=work, daemon=True).start()
 
 
+def parse_time(text):
+    """把 "90" / "1:30" / "01:02:03" 解析成秒；空串或非法返回 None。
+
+    支持全角冒号（中文输入法下很容易打出来），分钟/秒必须小于 60。
+    纯函数，方便单测 —— 时间解析错了会导致截取出错，不能靠手点验证。
+    """
+    s = (text or "").strip().replace("：", ":")
+    if not s:
+        return None
+    parts = s.split(":")
+    if len(parts) > 3 or any(not p.strip().isdigit() for p in parts):
+        return None
+    nums = [int(p) for p in parts]
+    if len(nums) == 1:
+        return nums[0]
+    if len(nums) == 2:
+        minute, second = nums
+        if second >= 60:
+            return None
+        return minute * 60 + second
+    hour, minute, second = nums
+    if minute >= 60 or second >= 60:
+        return None
+    return hour * 3600 + minute * 60 + second
+
+
 def _quality_labels(source, heights):
     """把探测到的高度列表变成下拉框选项 [(显示文字, 高度上限), ...]。
 
@@ -596,6 +622,28 @@ class App:
         self.cancel_btn.pack(side="left", padx=6)
         ttk.Button(btns, text="清空", command=self._clear).pack(side="left", padx=6)
 
+        # ---- 片段下载（仅 yt-dlp 系平台）----
+        # 长视频只要中间一段时，没必要整条下完再剪 —— yt-dlp 的
+        # --download-sections 能只拉取指定区间。抖音/快手走自己的解析器，
+        # 拿不到区间信息，所以这两个平台置灰。
+        sec_row = ttk.Frame(outer)
+        sec_row.pack(fill="x", pady=(0, 4))
+        self.section_var = tk.BooleanVar(value=False)
+        self.section_chk = ttk.Checkbutton(
+            sec_row, text="只下载片段", variable=self.section_var,
+            command=self._refresh_section_state)
+        self.section_chk.pack(side="left")
+        ttk.Label(sec_row, text="从").pack(side="left", padx=(8, 2))
+        self.sec_start = ttk.Entry(sec_row, width=9)
+        self.sec_start.pack(side="left")
+        ttk.Label(sec_row, text="到").pack(side="left", padx=(4, 2))
+        self.sec_end = ttk.Entry(sec_row, width=9)
+        self.sec_end.pack(side="left")
+        self.section_hint = ttk.Label(sec_row, text="", foreground="#aaa",
+                                      font=("", 8))
+        self.section_hint.pack(side="left", padx=(8, 0))
+        self._refresh_section_state()
+
         ttk.Separator(outer).pack(fill="x")
 
         # ---- 进度 ----
@@ -672,6 +720,19 @@ class App:
     def _hint(self):
         if not self.dnd_ok:
             self.status_var.set("拖拽组件没装上 —— 点格子后粘贴链接一样能用。")
+
+    def _refresh_section_state(self):
+        """片段下载只对 yt-dlp 系平台开放；抖音/快手走自己的解析器。"""
+        supported = self.active not in ("douyin", "kuaishou")
+        if not supported:
+            self.section_var.set(False)
+        self.section_chk.configure(state="normal" if supported else "disabled")
+        on = supported and self.section_var.get()
+        for widget in (self.sec_start, self.sec_end):
+            widget.configure(state="normal" if on else "disabled")
+        self.section_hint.configure(
+            text=("如 01:30 或 1:02:03；结束留空 = 到片尾" if supported
+                  else "抖音/快手暂不支持片段下载"))
 
     # ------------------------------------------------------------ 代理
     def _refresh_proxy_hint(self):
@@ -819,6 +880,7 @@ class App:
         self.entry_var.set(self.urls[source])
         self._refresh()
         self._update_cookie_cb()
+        self._refresh_section_state()
         self._schedule_probe()
 
     def _on_entry_change(self, *_):
@@ -1028,6 +1090,39 @@ class App:
             messagebox.showerror("代理地址不对", perr)
             return
 
+        # 片段：勾了就必须填对开始时间，结束可空（= 到片尾）
+        section = None
+        if self.section_var.get():
+            start = parse_time(self.sec_start.get())
+            end = parse_time(self.sec_end.get())
+            if start is None:
+                messagebox.showerror(
+                    "片段格式不对", "开始时间要填，格式如 01:30 或 1:02:03。")
+                return
+            if self.sec_end.get().strip() and end is None:
+                messagebox.showerror(
+                    "片段格式不对", "结束时间格式如 01:30 或 1:02:03。")
+                return
+            if end is not None and end <= start:
+                messagebox.showerror("片段格式不对", "结束时间必须晚于开始时间。")
+                return
+            if not end:
+                end = None
+            section = (start, end)
+
+        # ffmpeg（片段下载要用它拉流）不支持 SOCKS 代理。海外平台 + SOCKS
+        # 基本必失败，提前说清楚，别让用户等半天看一句「ffmpeg exited with code」
+        if (section and proxy and str(proxy).startswith("socks")
+                and any(s in backends._PROXY_SOURCES for s, _ in tasks)):
+            if not messagebox.askyesno(
+                    "SOCKS 代理可能不支持片段下载",
+                    "片段下载依赖 ffmpeg，而 ffmpeg 不支持 SOCKS 代理。\n"
+                    "海外平台（YouTube / X / Instagram / TikTok）的片段下载"
+                    "很可能失败。\n\n"
+                    "可以改用 HTTP 代理（如 http://127.0.0.1:7897），"
+                    "或取消「只下载片段」。\n\n仍要继续吗？"):
+                return
+
         self.busy = True
         self.go_btn.configure(state="disabled")
         self.cancel_btn.configure(state="normal")
@@ -1042,12 +1137,13 @@ class App:
         self.worker = threading.Thread(
             target=self._run_tasks,
             args=(tasks, outdir, use_cookies, max_height, proxy, proxy_host,
-                  proxy_port),
+                  proxy_port, section),
             daemon=True)
         self.worker.start()
 
     def _run_tasks(self, tasks, outdir, use_cookies, max_height=None,
-                   proxy=None, proxy_host=None, proxy_port=None):
+                   proxy=None, proxy_host=None, proxy_port=None,
+                   section=None):
         def emit(kind, **kw):
             self.q.put((kind, kw))
 
@@ -1068,6 +1164,13 @@ class App:
                     emit("failed", source=source, text=problem)
                     continue
 
+                # 界面已对抖音/快手禁用片段选项，这里是兜底：别静默忽略用户
+                # 的选择，直接说清楚为什么不生效
+                if section and source in ("douyin", "kuaishou"):
+                    emit("failed", source=source,
+                         text="抖音/快手暂不支持片段下载，请整段下载。")
+                    continue
+
                 if source == "douyin":
                     import douyin
                     ok, result = douyin.download_douyin(
@@ -1079,7 +1182,7 @@ class App:
                 else:
                     ok, result = backends.download_ytdlp(
                         url, source, outdir, use_cookies, emit, self.job,
-                        max_height, proxy)
+                        max_height, proxy, section)
 
                 if ok:
                     emit("ok", source=source, text=result)
