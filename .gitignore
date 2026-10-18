@@ -1,6 +1,8 @@
 # 登录凭证与隐私 —— 绝对不能上传
-profile_douyin/
-profile_kuaishou/
+# 用通配而不是逐个列：新增一个平台（比如 profile_bili）忘了加就出事。
+# 实测踩过一次：profile_bili 被 git add -A 整个暂存进去，里面是完整的
+# 浏览器配置目录（cookies、passport 的 IndexedDB、Local Storage）。
+profile_*/
 cookies/
 
 # 运行产物

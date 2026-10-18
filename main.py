@@ -100,6 +100,12 @@ PANE_FILLED_BORDER = "#2f7fd0"
 PANE_DONE = "#d8f5d8"        # 该平台本轮下载成功
 PANE_FAIL = "#ffd9d9"        # 该平台本轮下载失败
 
+# 能探测「实际支持哪些画质」的平台：都走 yt-dlp，能列出格式。
+# 抖音/快手是自研解析（抖音直接抓 CDN 流、快手纯 requests），没有格式列表，
+# 画质下拉框对它们也没意义（下载逻辑压根不看这个值）。
+_PROBE_SOURCES = tuple(s for s in config.SOURCES
+                       if s not in ("douyin", "kuaishou"))
+
 
 def _setup_logging():
     handler = RotatingFileHandler(config.LOG_FILE, maxBytes=512 * 1024,
@@ -394,6 +400,26 @@ def _create_shortcut_quietly():
     threading.Thread(target=work, daemon=True).start()
 
 
+def _quality_labels(source, heights, logged=False):
+    """把探测到的高度列表变成下拉框选项 [(显示文字, 高度上限), ...]。
+
+    heights 为 None/空时回退到固定列表（探测失败、或抖音快手这类没有格式
+    列表的平台），保证下拉框永远有东西可选。
+
+    B站 1080P 起要登录（再往上还要大会员），未登录时给后缀标出来 ——
+    否则用户选了 1080P 却下不动，完全不知道为什么。
+    """
+    out = [("最高", None)]
+    if heights:
+        for h in heights:
+            need = source == "bilibili" and h >= 1080 and not logged
+            out.append((f"{h}p" + ("（需登录）" if need else ""), h))
+    else:
+        for label in config.QUALITY_OPTIONS[1:]:
+            out.append((label, config.QUALITY_HEIGHT[label]))
+    return out
+
+
 def _summary_status(done, fail, cancelled):
     """本轮任务结束时的状态栏文案。
 
@@ -440,6 +466,12 @@ class App:
         self.status_var = tk.StringVar(value="")
         self.detail_var = tk.StringVar(value="")
         self.percent_var = tk.StringVar(value="0%")
+        # 画质下拉框：默认用固定列表；探测到这条视频的实际格式后重建。
+        # 映射存的是「下拉框显示的文字 -> 高度上限」，因为标签里可能带
+        # 「（需登录）」后缀，不能再拿 config.QUALITY_HEIGHT 直接查。
+        self._quality_map = dict(config.QUALITY_HEIGHT)
+        self._probe_seq = 0        # 链接一换就让上一次探测结果作废
+        self._probe_after = None   # 防抖定时器句柄
 
         self._build()
         self._select("youtube")
@@ -490,10 +522,17 @@ class App:
         self.entry.pack(side="left", fill="x", expand=True, padx=4)
         self.entry_var.trace_add("write", self._on_entry_change)
 
-        # B站 cookies 勾选不常驻 —— 只在 B站格子激活时出现（见 _update_cookie_cb）
+        # B站 登录相关控件不常驻 —— 只在 B站格子激活时出现（见 _update_cookie_cb）。
+        # 「登录 B站」按钮必须有：errors.py 早就让用户「点导入 B站登录」，
+        # 但界面上从来没有这个入口，等于把人指向空气。
+        self.cookie_row = ttk.Frame(outer)
         self.cookie_cb = ttk.Checkbutton(
-            outer, variable=self.cookie_var,
-            text="B站使用登录信息（可解锁更高画质；需先导入 cookies）")
+            self.cookie_row, variable=self.cookie_var,
+            text="B站使用登录信息（可解锁 1080P 及以上）")
+        self.cookie_cb.pack(side="left")
+        self.bili_login_btn = ttk.Button(
+            self.cookie_row, text="登录 B站", command=self._bili_login)
+        self.bili_login_btn.pack(side="left", padx=(8, 0))
 
         ttk.Separator(outer).pack(fill="x", pady=10)
 
@@ -508,9 +547,10 @@ class App:
         btns = ttk.Frame(outer)
         btns.pack(fill="x", pady=10)
         ttk.Label(btns, text="画质：").pack(side="left")
-        ttk.Combobox(btns, textvariable=self.quality_var,
-                     values=config.QUALITY_OPTIONS, state="readonly",
-                     width=6).pack(side="left", padx=(0, 10))
+        self.quality_cb = ttk.Combobox(btns, textvariable=self.quality_var,
+                                       values=config.QUALITY_OPTIONS,
+                                       state="readonly", width=8)
+        self.quality_cb.pack(side="left", padx=(0, 10))
         self.go_btn = ttk.Button(btns, text="下  载", command=self._start)
         self.go_btn.pack(side="left")
         self.cancel_btn = ttk.Button(btns, text="取消", command=self._cancel,
@@ -580,13 +620,83 @@ class App:
         不会因为 pack 顺序跑到布局末尾。
         """
         if self.active == "bilibili":
-            self.cookie_cb.pack(anchor="w", pady=(6, 0), after=self.entry_row)
+            self.cookie_row.pack(anchor="w", pady=(6, 0), after=self.entry_row)
         else:
-            self.cookie_cb.pack_forget()
+            self.cookie_row.pack_forget()
 
     def _hint(self):
         if not self.dnd_ok:
             self.status_var.set("拖拽组件没装上 —— 点格子后粘贴链接一样能用。")
+
+    # ------------------------------------------------------------ B站登录
+    def _bili_login(self):
+        """开浏览器让用户扫码，成功后把登录态写成 cookies.txt。
+
+        起浏览器要几百毫秒，放后台线程跑；结果走队列回主线程更新界面。
+        """
+        if self.busy:
+            self.status_var.set("正在下载，等这轮结束再登录")
+            return
+        self.bili_login_btn.configure(state="disabled")
+        self.status_var.set("正在打开 B站登录页…")
+
+        def work():
+            try:
+                import bililogin
+                ok, result = bililogin.login_and_save(
+                    emit=lambda kind, **kw: self.q.put((kind, kw)))
+                self.q.put(("bili_login_ok" if ok else "bili_login_fail",
+                            {"text": result}))
+            except Exception as exc:
+                logging.exception("B站登录失败")
+                self.q.put(("bili_login_fail", {"text": str(exc)}))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    # ------------------------------------------------------------ 画质探测
+    def _schedule_probe(self):
+        """链接变了就延迟 800ms 再探画质 —— 连续输入只探最后一次。"""
+        if self._probe_after is not None:
+            try:
+                self.root.after_cancel(self._probe_after)
+            except Exception:
+                pass
+        self._probe_after = self.root.after(800, self._probe_qualities)
+
+    def _probe_qualities(self):
+        self._probe_after = None
+        if self.busy:
+            return
+        source = self.active
+        url = self.urls.get(source) or ""
+        if not url or source not in _PROBE_SOURCES:
+            self._set_quality_options(source, None)
+            return
+        self._probe_seq += 1
+        seq = self._probe_seq
+        use_cookies = bool(self.cookie_var.get()) and source == "bilibili"
+        self.status_var.set("正在读取这条视频支持的画质…")
+
+        def work():
+            try:
+                heights = backends.probe_heights(url, source, use_cookies)
+            except Exception:
+                heights = None
+            self.q.put(("qualities", {"seq": seq, "source": source,
+                                      "heights": heights,
+                                      "logged": use_cookies}))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _set_quality_options(self, source, heights, logged=False):
+        """按探测结果重建画质下拉框；heights 为 None 时回退固定列表。"""
+        pairs = _quality_labels(source, heights, logged)
+        self._quality_map = dict(pairs)
+        labels = [p[0] for p in pairs]
+        widest = max(len(x) for x in labels) + 1
+        self.quality_cb.configure(values=labels, width=min(18, max(8, widest)))
+        if self.quality_var.get() not in self._quality_map:
+            self.quality_var.set("最高")
 
     # ------------------------------------------------------------------ 交互
     def _on_drop(self, event, source):
@@ -612,6 +722,7 @@ class App:
         self.entry_var.set(self.urls[source])
         self._refresh()
         self._update_cookie_cb()
+        self._schedule_probe()
 
     def _on_entry_change(self, *_):
         self.urls[self.active] = self.entry_var.get()
@@ -624,6 +735,7 @@ class App:
         self._refresh()
         self._update_cookie_cb()
         self.status_var.set(f"已识别为 {config.SOURCE_LABEL[source]}")
+        self._schedule_probe()
 
     def _refresh(self):
         for source, pane in self.panes.items():
@@ -672,6 +784,8 @@ class App:
         self.status_var.set("")
         self.detail_var.set("")
         self._set_progress(0.0)
+        self._probe_seq += 1                 # 让在途的画质探测结果作废
+        self._set_quality_options(self.active, None)
         self._refresh()
 
     def _watch_clipboard(self):
@@ -710,7 +824,9 @@ class App:
         # 先把所有界面变量的值取出来再交给 worker —— worker 不许碰 Tk
         outdir = self.outdir_var.get()
         use_cookies = bool(self.cookie_var.get())
-        max_height = config.QUALITY_HEIGHT.get(self.quality_var.get())
+        # 画质上限从当前下拉框的文字反查 —— 标签可能带「（需登录）」后缀，
+        # 不能直接拿 config.QUALITY_HEIGHT 查
+        max_height = self._quality_map.get(self.quality_var.get())
 
         self.busy = True
         self.go_btn.configure(state="disabled")
@@ -836,6 +952,28 @@ class App:
                 messagebox.showerror(
                     config.SOURCE_LABEL[kw["source"]] + " 下载失败",
                     kw.get("text", ""))
+        elif kind == "qualities":
+            if kw.get("seq") != self._probe_seq:
+                return               # 用户又换了链接，这批结果已作废
+            self._set_quality_options(kw.get("source"), kw.get("heights"),
+                                      kw.get("logged", False))
+            if not self.busy:
+                self.status_var.set("")
+        elif kind == "bili_login_ok":
+            self.bili_login_btn.configure(state="normal")
+            self.cookie_var.set(True)     # 登录完顺手勾上，省一步
+            self.status_var.set("B站登录成功")
+            self.detail_var.set("登录信息已保存：" + kw.get("text", ""))
+            logging.info("B站登录成功 -> %s", kw.get("text"))
+            messagebox.showinfo(
+                "登录成功",
+                "B站登录信息已保存。\n"
+                "勾选「B站使用登录信息」后即可下载 1080P 及以上画质。")
+            self._schedule_probe()        # 登录后「需登录」标注要重算
+        elif kind == "bili_login_fail":
+            self.bili_login_btn.configure(state="normal")
+            self.status_var.set("B站登录未完成")
+            messagebox.showerror("B站登录", kw.get("text", ""))
         elif kind == "crash":
             logging.error("worker 崩溃:\n%s", kw.get("text"))
             messagebox.showerror("程序出错",

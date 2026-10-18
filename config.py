@@ -150,6 +150,8 @@ COOKIES_DIR = os.path.join(USER_DATA_DIR, "cookies")
 COOKIES_BILI = os.path.join(COOKIES_DIR, "bilibili.txt")
 # 抖音专用浏览器配置目录：扫码登录一次，登录态长期保存在这里
 PROFILE_DOUYIN = os.path.join(USER_DATA_DIR, "profile_douyin")
+# B站扫码登录专用浏览器配置目录（和抖音分开，互不干扰）
+PROFILE_BILI = os.path.join(USER_DATA_DIR, "profile_bili")
 # 界面偏好 +「使用须知已同意」标记都存这里（JSON）
 SETTINGS_FILE = os.path.join(USER_DATA_DIR, "settings.json")
 

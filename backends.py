@@ -3,12 +3,16 @@
 import json
 import os
 import pathlib
+import subprocess
 import threading
 import time
 
 import config
 import procutil
 from errors import friendly
+
+# 被墙平台，必须走本机代理；其余（国内站）一律直连
+_PROXY_SOURCES = ("youtube", "x", "instagram", "tiktok")
 
 # 西瓜视频的访客 cookie 文件（常量路径，见 _ixigua_cookie_file）
 _IXIGUA_COOKIES = pathlib.Path(config.COOKIES_DIR) / "ixigua.txt"
@@ -69,14 +73,63 @@ def _base_args(source, outdir, use_cookies, max_height=None):
         "--print", "after_move:%(filepath)j",
         "--print", "video:TITLE %(title)j",
     ]
-    if source in ("youtube", "x", "instagram", "tiktok"):
+    if source in _PROXY_SOURCES:
         args += ["--proxy", config.PROXY]   # 被墙站，必须走本机代理
     else:
         # 国内站必须直连。显式传空串关掉代理，同时 build_env 会清掉代理环境变量
         args += ["--proxy", ""]
-        if use_cookies:
+        # cookies 只有 B站 有；以前这里只判 use_cookies，别的国内站也会被塞进
+        # B站的 cookies 文件，属于逻辑错误
+        if use_cookies and source == "bilibili":
             args += ["--cookies", config.COOKIES_BILI]
     return args
+
+
+def probe_heights(url, source, use_cookies=False, timeout=45):
+    """探测这条链接**实际支持**的画质高度（从高到低、去重）。
+
+    用 `yt-dlp -J` 只取元数据、不下载。任何一步失败都返回 None —— 调用方
+    回退到固定列表，绝不能让「探测画质」挡住下载本身。
+
+    注意：B站游客态也会列出 1080P 这类需要登录的格式（playurl 接口给了
+    清晰度列表，但真正拉流会失败）。「需登录」的标注由界面层按平台规则补，
+    不在这里猜。
+    """
+    cmd = [
+        *config.YTDLP_CMD,
+        "-J", "--no-playlist", "--no-warnings",
+        "--skip-download", "--no-progress", "--no-colors",
+    ]
+    blocked = source in _PROXY_SOURCES
+    if blocked:
+        cmd += ["--proxy", config.PROXY]
+    else:
+        cmd += ["--proxy", ""]
+        if use_cookies and source == "bilibili":
+            cmd += ["--cookies", config.COOKIES_BILI]
+    cmd.append(url)
+
+    try:
+        proc = subprocess.run(cmd, capture_output=True, timeout=timeout,
+                              env=procutil.build_env(no_proxy=not blocked))
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        data = json.loads(proc.stdout.decode("utf-8", "replace"))
+    except ValueError:
+        return None
+
+    heights = set()
+    for f in (data.get("formats") or ()):
+        if (f.get("vcodec") or "none") == "none":     # 纯音频轨，跳过
+            continue
+        try:
+            heights.add(int(f.get("height")))
+        except (TypeError, ValueError):
+            continue
+    return sorted(heights, reverse=True) or None
 
 
 def _json_str(text):

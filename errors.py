@@ -154,7 +154,10 @@ def check_prereqs(source, outdir, cookies_path=None, use_cookies=False,
 
     if source == "bilibili" and use_cookies:
         if not cookies_path or not os.path.isfile(cookies_path):
-            return f"没有找到 cookies 文件：{cookies_path}\n请先点「导入 B站登录」。"
+            # 以前这里写的是「请先点【导入 B站登录】」，但界面上根本没有那个
+            # 按钮 —— 用户被指向一个不存在的东西，只能干瞪眼。
+            return (f"还没登录 B站（找不到 cookies 文件：{cookies_path}）。\n"
+                    "点界面上的「登录 B站」按钮，在弹出的窗口里扫码即可。")
         try:
             with open(cookies_path, "r", encoding="utf-8", errors="replace") as f:
                 body = f.read()
