@@ -90,6 +90,16 @@ class TestExtractUrl:
         assert config.extract_url("") is None
         assert config.extract_url(None) is None
 
+    def test_douyin_share_blob_with_hashtags(self):
+        # 真实抖音分享文案：口令 + 标题 + 一堆话题 + 链接 + 引导语。
+        # 用户直接 Ctrl+V 粘进输入框时，必须能从中抠出唯一那条链接。
+        blob = ("7.69 11/24 t@r.rE eod:/ :1pm 三小只一起参加抖音创大了！ "
+                "# 三角洲出征创大排面这一块 2026# 抖音创作者大会 # 抖音游戏 "
+                "# 三角洲行动  https://v.douyin.com/I4oCZy1yGc4/ "
+                "复制此链接，打开Dou音搜索，直接观看视频！")
+        assert config.extract_url(blob) == "https://v.douyin.com/I4oCZy1yGc4/"
+        assert config.detect_source(blob) == "douyin"
+
 
 class TestDisplayUrl:
     def test_short_unchanged(self):
@@ -159,4 +169,3 @@ class TestBundledYtdlp:
         import backends
         args = backends._base_args("bilibili", ".", False, None)
         assert args[:len(config.YTDLP_CMD)] == config.YTDLP_CMD
-

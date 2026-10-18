@@ -569,6 +569,9 @@ class App:
         self.entry = ttk.Entry(self.entry_row, textvariable=self.entry_var)
         self.entry.pack(side="left", fill="x", expand=True, padx=4)
         self.entry_var.trace_add("write", self._on_entry_change)
+        # 抖音/快手的分享是一大段中文文案，直接粘进输入框下载器只会报错。
+        # 拦截粘贴事件，把链接抠出来再填。
+        self.entry.bind("<<Paste>>", self._on_paste)
 
         # B站 登录相关控件不常驻 —— 只在 B站格子激活时出现（见 _update_cookie_cb）。
         # 「登录 B站」按钮必须有：errors.py 早就让用户「点导入 B站登录」，
@@ -883,6 +886,23 @@ class App:
         self._refresh_section_state()
         self._schedule_probe()
 
+    def _on_paste(self, _event=None):
+        """粘贴分享文案时自动抠出链接，并切到对应平台的格子。
+
+        返回 "break" 阻止默认粘贴 —— 默认行为会把整段中文塞进输入框。
+        剪贴板里没有链接时返回 None，走默认粘贴（用户可能就是想贴文字）。
+        """
+        try:
+            raw = self.root.clipboard_get()
+        except tk.TclError:
+            return None
+        url = config.extract_url(raw)
+        if not url:
+            return None
+        # 用户可能正停在 B站格子时粘了一段抖音文案，连格子一起切过去
+        self._set_url(url, config.detect_source(raw) or self.active)
+        return "break"
+
     def _on_entry_change(self, *_):
         self.urls[self.active] = self.entry_var.get()
         self._refresh()
@@ -1072,7 +1092,24 @@ class App:
     def _start(self):
         if self.busy:
             return
-        tasks = [(s, self.urls[s]) for s in config.SOURCES if self.urls[s]]
+        # 每个格子里的内容再抠一次链接：拖拽和剪贴板监听已经抽过，但手动
+        # 输入/粘贴可能残留整段分享文案（曾经把中文交给下载器导致报错）
+        tasks = []
+        for s in config.SOURCES:
+            raw = (self.urls[s] or "").strip()
+            if not raw:
+                continue
+            url = config.extract_url(raw)
+            if not url:
+                messagebox.showerror(
+                    "链接不对",
+                    f"{config.SOURCE_LABEL[s]} 那一格里没找到 http 链接。\n"
+                    "可以直接粘贴整段分享文案，程序会自动提取链接。")
+                return
+            self.urls[s] = url
+            if s == self.active:
+                self.entry_var.set(url)
+            tasks.append((s, url))
         if not tasks:
             messagebox.showinfo("还没有链接", "先把视频链接拖进格子，或复制链接后回来。")
             return
