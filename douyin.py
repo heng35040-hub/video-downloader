@@ -32,6 +32,44 @@ _FAV_MUSIC_MARK = ("/user/self", "showSubTab=music")
 
 _MEDIA_HINT = ("douyinvod.com", "/video/tos/")   # 子域名一直在换，别写死 v26-web
 
+# 抖音的 CDN 对视频/音频走 HTTP Range 分段请求，返回 **206 Partial Content**
+# 而不是 200。早先只认 200，导致页面明明在正常播放、一个流都抓不到 ——
+# 症状是「没能从页面里抓到视频流」，很容易误判成登录墙。
+_OK_STATUS = (200, 206)
+
+
+def _media_size(headers):
+    """取这条响应对应的**文件总大小**。
+
+    206 的 content-length 只是本次分段的长度（可能只有几十 KB），拿它排序会
+    选错流；真正的总长在 Content-Range 的 "bytes 0-123/45678" 末尾。
+    """
+    headers = headers or {}
+    m = re.search(r"/(\d+)\s*$", headers.get("content-range") or "")
+    if m:
+        return int(m.group(1))
+    try:
+        return int(headers.get("content-length") or 0)
+    except ValueError:
+        return 0
+
+
+def _logged_in(ctx):
+    """当前浏览器上下文里是否已有抖音登录态。
+
+    sessionid / sid_tt 是登录后才下发的，游客没有 —— 比去看页面上的头像
+    元素稳（那些 class 名一直在变）。
+    """
+    try:
+        for c in ctx.cookies():
+            if c.get("name") in ("sessionid", "sessionid_ss", "sid_tt") \
+                    and c.get("value"):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 _BAD_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
 
@@ -150,11 +188,15 @@ def _video_id(url, session):
     return None
 
 
-def _capture(page_url, job, headless=True, timeout=30):
-    """用浏览器打开视频页，捞 CDN 直链。返回 (直链, 标题)。"""
+def _capture(page_url, job, headless=True, timeout=30, emit=None):
+    """用浏览器打开视频页，捞 CDN 直链。返回 (直链, 标题)。
+
+    emit 传入时，会在有头窗口里实时汇报登录状态：用户扫码成功后立刻把
+    「请扫码登录」换成「已登录」，而不是一直挂着那句提示让人以为卡死了。
+    """
     from playwright.sync_api import sync_playwright
 
-    found = []          # [(url, content_length)]
+    found = []          # [(url, 文件总大小)]
 
     with sync_playwright() as p:
         ctx = _open_context(p, headless)
@@ -168,14 +210,14 @@ def _capture(page_url, job, headless=True, timeout=30):
                 # 用 response 而不是 request：request 阶段每个预加载都会触发，
                 # 且拿不到状态码，无法判断链接是否真的可用
                 try:
-                    if resp.status != 200:
+                    if resp.status not in _OK_STATUS:
                         return
                     headers = resp.headers or {}
                     if not headers.get("content-type", "").startswith("video/"):
                         return
                     if not any(h in resp.url for h in _MEDIA_HINT):
                         return
-                    found.append((resp.url, int(headers.get("content-length") or 0)))
+                    found.append((resp.url, _media_size(headers)))
                 except Exception:
                     pass
 
@@ -186,9 +228,48 @@ def _capture(page_url, job, headless=True, timeout=30):
             deadline = time.time() + timeout
             click_at = time.time() + 8
             clicked = False
+            login = None            # None=还没查过
+            next_login_check = 0.0
+            reload_at = time.time() + 15
+
+            def do_reload():
+                """重载页面并重置点击/重载计时（抖音是 SPA，重载后要重新触发播放）。"""
+                nonlocal clicked, click_at, reload_at
+                try:
+                    page.reload(wait_until="domcontentloaded", timeout=30000)
+                except Exception:
+                    pass
+                clicked = False
+                click_at = time.time() + 3
+                reload_at = time.time() + 15
+
             while time.time() < deadline and not found:
                 if job and job.cancel.is_set():
                     return None, None
+                now = time.time()
+
+                # 有头窗口里实时播报登录状态：扫码成功后立刻改提示，
+                # 而不是一直挂着「请扫码登录」让人以为卡死了
+                if emit and not headless and now >= next_login_check:
+                    next_login_check = now + 1.5
+                    cur = _logged_in(ctx)
+                    if cur != login:
+                        login = cur
+                        emit("status", text=(
+                            "登录成功，正在获取直链…" if cur else
+                            "弹出了浏览器窗口 —— 请在里面扫码登录抖音"
+                            "（只需一次），登录成功后会自动继续…"))
+                        if cur:
+                            # 扫码登录后页面不会自己重载，不刷新就一直停在
+                            # 游客态、拿不到流
+                            do_reload()
+
+                # 兜底：Edge 新版把登录 cookie 做了 App-Bound 加密，外部进程
+                # 可能读不到，_logged_in 会一直判 False。这时靠定期刷新，
+                # 用户登录后最多等 15 秒就能自动接上
+                if now >= reload_at and not found:
+                    do_reload()
+
                 if not clicked and time.time() >= click_at:
                     clicked = True
                     try:
@@ -324,7 +405,7 @@ def _capture_music(page_url, job, headless=True, timeout=30):
 
             def on_response(resp):
                 try:
-                    if resp.status != 200:
+                    if resp.status not in _OK_STATUS:
                         return
                     u = resp.url
                     ct = (resp.headers or {}).get("content-type", "")
@@ -335,7 +416,7 @@ def _capture_music(page_url, job, headless=True, timeout=30):
                                 play_map[u2] = t2
                         return
                     if ct.startswith("audio/"):
-                        size = int((resp.headers or {}).get("content-length") or 0)
+                        size = _media_size(resp.headers)
                         if (u, size) not in found:
                             found.append((u, size))
                 except Exception:
@@ -497,7 +578,7 @@ def _capture_fav_music(page_url, job, headless=True, timeout=300):
 
             def on_response(resp):
                 try:
-                    if resp.status != 200:
+                    if resp.status not in _OK_STATUS:
                         return
                     u = resp.url
                     ct = (resp.headers or {}).get("content-type", "")
@@ -677,18 +758,19 @@ def download_douyin(url, outdir, emit, job, chooser=None):
 
         last_err = ""
         # 先静默试一次；不行才弹有头浏览器 —— 第一次需要扫码登录抖音，
-        # 登录态会存进本地 profile，之后一直免登录
-        for attempt, (headless, wait) in enumerate(((True, 30), (False, 180)), 1):
+        # 登录态会存进本地 profile，之后一直免登录。
+        # 无头那轮 15 秒足够（页面能播的话 4 秒内就出流），别让新用户干等 30 秒
+        for attempt, (headless, wait) in enumerate(((True, 15), (False, 180)), 1):
             if job.cancel.is_set():
                 return False, "已取消"
             if headless:
-                emit("status", text=f"正在获取直链…（第 {attempt} 次）")
+                emit("status", text="正在获取直链…")
             else:
-                emit("status", text="弹出了浏览器窗口 —— 请在里面扫码登录抖音"
-                                    "（只需一次），登录后会自动继续下载…")
+                # 具体提示由 _capture 按实际登录状态播报（已登录 / 待扫码）
+                emit("status", text="正在打开浏览器…")
 
             media, title = _capture(page_url, job,
-                                    headless=headless, timeout=wait)
+                                    headless=headless, timeout=wait, emit=emit)
             if not media:
                 last_err = "没能从页面里抓到视频流"
                 continue
