@@ -5,6 +5,27 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)（采用日期格式 YYYY.MM.DD）。
 
+## [2026.10.18.3] - 2026-10-18
+
+### 修复
+- **画质下拉框里的「（需登录）」标注是错的，已移除**：上一版按「B站 1080P 起
+  要登录」的常识给 1080P 加了后缀，实测不成立 —— 未登录直接用
+  `bv*[height<=1080]+ba` 能把 1080P 完整下完（yt-dlp 会把 1080P 直链给游客，
+  实测 15.3 MB 视频轨 + 5.2 MB 音轨合并成功）。标错了比不标更误导，现在只列
+  **实测可用**的画质，不猜
+- **探测失败时静默回退成固定档位，看起来像真实画质**：某条视频 yt-dlp 报
+  「可能已删除或地区限制」，界面却照样显示 1080p/720p/480p，用户自然以为能下。
+  现在把失败原因翻译成中文显示在状态栏（如「读不到画质列表：视频可能已删除，
+  或仅限特定地区观看。」），固定档位只作兜底、不再冒充真实数据
+- `backends.probe_heights` 改为 `probe_formats`，返回 `(heights, error)`，
+  错误经 `errors.friendly()` 翻译；新增 `_short_err` 把 yt-dlp 的 stderr
+  压成一句能放进状态栏的话
+- `_short_err` 的边界 bug：空 stderr 时 `b"" or ""` 会得到 `str`，再调
+  `.decode()` 抛 AttributeError
+- `errors.friendly()` 补 B站「已删除 / 地区限制」的中文翻译
+- `tests/test_quality.py` 改为守住「不出现需登录后缀」+ `_short_err` 行为，
+  总测试 108 → 111
+
 ## [2026.10.18.2] - 2026-10-18
 
 ### 新增

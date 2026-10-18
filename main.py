@@ -400,24 +400,22 @@ def _create_shortcut_quietly():
     threading.Thread(target=work, daemon=True).start()
 
 
-def _quality_labels(source, heights, logged=False):
+def _quality_labels(source, heights):
     """把探测到的高度列表变成下拉框选项 [(显示文字, 高度上限), ...]。
 
     heights 为 None/空时回退到固定列表（探测失败、或抖音快手这类没有格式
     列表的平台），保证下拉框永远有东西可选。
 
-    B站 1080P 起要登录（再往上还要大会员），未登录时给后缀标出来 ——
-    否则用户选了 1080P 却下不动，完全不知道为什么。
+    这里**不标「需登录」**。曾经按「B站 1080P 起要登录」的常识加过后缀，
+    实测是错的：未登录直接用 `bv*[height<=1080]+ba` 能把 1080P 下完
+    （yt-dlp 会把 1080P 直链给游客）。标错了比不标更误导，所以只列实测
+    可用的画质，不猜。
     """
-    out = [("最高", None)]
     if heights:
-        for h in heights:
-            need = source == "bilibili" and h >= 1080 and not logged
-            out.append((f"{h}p" + ("（需登录）" if need else ""), h))
-    else:
-        for label in config.QUALITY_OPTIONS[1:]:
-            out.append((label, config.QUALITY_HEIGHT[label]))
-    return out
+        return [("最高", None)] + [(f"{h}p", h) for h in heights]
+    return ([("最高", None)]
+            + [(label, config.QUALITY_HEIGHT[label])
+               for label in config.QUALITY_OPTIONS[1:]])
 
 
 def _summary_status(done, fail, cancelled):
@@ -679,18 +677,17 @@ class App:
 
         def work():
             try:
-                heights = backends.probe_heights(url, source, use_cookies)
-            except Exception:
-                heights = None
+                heights, err = backends.probe_formats(url, source, use_cookies)
+            except Exception as exc:
+                heights, err = None, f"{type(exc).__name__}"
             self.q.put(("qualities", {"seq": seq, "source": source,
-                                      "heights": heights,
-                                      "logged": use_cookies}))
+                                      "heights": heights, "err": err}))
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _set_quality_options(self, source, heights, logged=False):
+    def _set_quality_options(self, source, heights):
         """按探测结果重建画质下拉框；heights 为 None 时回退固定列表。"""
-        pairs = _quality_labels(source, heights, logged)
+        pairs = _quality_labels(source, heights)
         self._quality_map = dict(pairs)
         labels = [p[0] for p in pairs]
         widest = max(len(x) for x in labels) + 1
@@ -955,9 +952,17 @@ class App:
         elif kind == "qualities":
             if kw.get("seq") != self._probe_seq:
                 return               # 用户又换了链接，这批结果已作废
-            self._set_quality_options(kw.get("source"), kw.get("heights"),
-                                      kw.get("logged", False))
-            if not self.busy:
+            heights, err = kw.get("heights"), kw.get("err")
+            self._set_quality_options(kw.get("source"), heights)
+            if self.busy:
+                return
+            if err:
+                # 探不到就直说，别让固定档位看起来像是这条视频的真实画质
+                hint = errors.friendly(err, kw.get("source"))
+                if hint.startswith("下载失败："):
+                    hint = hint[len("下载失败："):]
+                self.status_var.set(f"读不到画质列表：{hint}")
+            else:
                 self.status_var.set("")
         elif kind == "bili_login_ok":
             self.bili_login_btn.configure(state="normal")

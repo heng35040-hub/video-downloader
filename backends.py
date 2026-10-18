@@ -3,6 +3,7 @@
 import json
 import os
 import pathlib
+import re
 import subprocess
 import threading
 import time
@@ -85,15 +86,38 @@ def _base_args(source, outdir, use_cookies, max_height=None):
     return args
 
 
-def probe_heights(url, source, use_cookies=False, timeout=45):
-    """探测这条链接**实际支持**的画质高度（从高到低、去重）。
+def _short_err(stderr, limit=120):
+    """把 yt-dlp 的 stderr 压成一句能放进状态栏的话。"""
+    if not stderr:                       # 注意：b"" 是 falsy，不能写成
+        return "未知原因"                 # `(stderr or "").decode()` —— 那会得到
+    if isinstance(stderr, bytes):        # str 再调 .decode() 直接 AttributeError
+        text = stderr.decode("utf-8", "replace")
+    else:
+        text = str(stderr)
+    text = text.strip()
+    for line in reversed(text.splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("ERROR:"):
+            line = line[len("ERROR:"):].strip()
+        # 去掉 "[BiliBili] 1VEJQ6DEHk: " 这种前缀
+        m = re.match(r"^\[[^\]]+\]\s*[^:]{0,40}:\s*", line)
+        if m:
+            line = line[m.end():]
+        return line[:limit]
+    return "未知原因"
 
-    用 `yt-dlp -J` 只取元数据、不下载。任何一步失败都返回 None —— 调用方
-    回退到固定列表，绝不能让「探测画质」挡住下载本身。
 
-    注意：B站游客态也会列出 1080P 这类需要登录的格式（playurl 接口给了
-    清晰度列表，但真正拉流会失败）。「需登录」的标注由界面层按平台规则补，
-    不在这里猜。
+def probe_formats(url, source, use_cookies=False, timeout=45):
+    """探测这条链接**实际能拿到**的画质。返回 (heights, error)。
+
+    heights 是从高到低、去重的高度列表；探不到时为 None，error 给出原因。
+    用 `yt-dlp -J` 只取元数据、不下载。
+
+    为什么不猜「哪些画质需要登录」：实测 B站未登录也能下 1080P（yt-dlp 会把
+    1080P 的直链给游客，真能下完）。所以这里只报**实测可用**的，不在界面上
+    瞎标「需登录」—— 标错了比不标更误导。
     """
     cmd = [
         *config.YTDLP_CMD,
@@ -112,14 +136,16 @@ def probe_heights(url, source, use_cookies=False, timeout=45):
     try:
         proc = subprocess.run(cmd, capture_output=True, timeout=timeout,
                               env=procutil.build_env(no_proxy=not blocked))
-    except Exception:
-        return None
+    except subprocess.TimeoutExpired:
+        return None, "解析超时"
+    except Exception as exc:
+        return None, f"{type(exc).__name__}"
     if proc.returncode != 0:
-        return None
+        return None, _short_err(proc.stderr)
     try:
         data = json.loads(proc.stdout.decode("utf-8", "replace"))
     except ValueError:
-        return None
+        return None, "返回内容无法解析"
 
     heights = set()
     for f in (data.get("formats") or ()):
@@ -129,7 +155,7 @@ def probe_heights(url, source, use_cookies=False, timeout=45):
             heights.add(int(f.get("height")))
         except (TypeError, ValueError):
             continue
-    return sorted(heights, reverse=True) or None
+    return (sorted(heights, reverse=True) or None), None
 
 
 def _json_str(text):

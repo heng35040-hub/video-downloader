@@ -42,6 +42,8 @@ def friendly(raw, source):
     if source == "bilibili":
         if any(k in s for k in ("403", "sessdata", "premium", "大会员")):
             return "登录信息已失效，请重新导出 cookies。"
+        if any(k in s for k in ("deleted", "geo-restricted", "not found", "404")):
+            return "视频可能已删除，或仅限特定地区观看。"
         if any(k in s for k in ("connection", "refused", "resolve", "timed out")):
             return "连不上 B站。请检查网络，或确认代理没有拦截国内站点。"
         if "requested format" in s:
