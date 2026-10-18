@@ -146,7 +146,8 @@ jobs:
             - Windows 10/11 (64-bit)
             - 下载被墙平台 (YouTube/X/Instagram/TikTok) 需本机代理软件运行
             - 抖音功能使用系统自带的 Microsoft Edge / Google Chrome，无需额外下载浏览器
-            - 首次启动会自动下载 yt-dlp 和 ffmpeg 到 `%LOCALAPPDATA%\VideoDownloader\tools\`
+            - 首次启动只需一键下载 ffmpeg 到 `%LOCALAPPDATA%\VideoDownloader\tools\`
+              （yt-dlp 已内置，无需联网下载；抖音/快手连 ffmpeg 都不需要）
 
             ### 变更日志
             见 [CHANGELOG.md](https://github.com/heng35040-hub/video-downloader/blob/main/CHANGELOG.md) 或提交历史。
