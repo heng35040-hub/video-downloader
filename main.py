@@ -97,6 +97,8 @@ PANE_IDLE = "#f2f2f2"
 PANE_ACTIVE = "#d6e9ff"
 PANE_DROP = "#bcdcf5"
 PANE_FILLED_BORDER = "#2f7fd0"
+PANE_DONE = "#d8f5d8"        # 该平台本轮下载成功
+PANE_FAIL = "#ffd9d9"        # 该平台本轮下载失败
 
 
 def _setup_logging():
@@ -392,6 +394,24 @@ def _create_shortcut_quietly():
     threading.Thread(target=work, daemon=True).start()
 
 
+def _summary_status(done, fail, cancelled):
+    """本轮任务结束时的状态栏文案。
+
+    抽成纯函数是为了能单测 —— 旧实现是在 finished 里判断
+    `status_var.get().startswith("[")`，只要后端中途改过状态（比如
+    「拿到直链，开始下载…」）就判断失效，视频下完了状态栏还挂着那句。
+    """
+    if cancelled:
+        return f"已取消（本轮完成 {done} 个）" if done else "已取消"
+    if fail and done:
+        return f"完成 {done} 个，失败 {fail} 个"
+    if fail:
+        return "全部失败"
+    if done:
+        return "全部完成"
+    return ""
+
+
 class App:
     def __init__(self, root, dnd_ok):
         self.root = root
@@ -401,6 +421,11 @@ class App:
         self.worker = None
         self.busy = False
         self.alive = True
+        # 本轮任务的成败计数。收尾文案由它算出来，而不是去猜 status_var
+        # 里还留着什么字符串（旧实现用 startswith("[") 判断，只要后端中途
+        # 改过状态就失效，导致下载完成后还挂着「拿到直链，开始下载…」）
+        self._done = 0
+        self._fail = 0
 
         self.urls = {s: "" for s in config.SOURCES}
         self.active = "youtube"
@@ -638,10 +663,15 @@ class App:
         threading.Thread(target=work, daemon=True).start()
 
     def _clear(self):
+        if self.busy:
+            # 下载中清空只会清掉界面、后台任务照跑，用户很容易以为已经取消
+            self.status_var.set("正在下载，先点「取消」再清空")
+            return
         self.urls = {s: "" for s in config.SOURCES}
         self.entry_var.set("")
         self.status_var.set("")
         self.detail_var.set("")
+        self._set_progress(0.0)
         self._refresh()
 
     def _watch_clipboard(self):
@@ -685,6 +715,13 @@ class App:
         self.busy = True
         self.go_btn.configure(state="disabled")
         self.cancel_btn.configure(state="normal")
+        # 清掉上一轮的残留，否则新任务开始后界面上还挂着上次的
+        # 「完成：xxx.mp4」和 100% 进度条，看着像没开始
+        self._done = 0
+        self._fail = 0
+        self.status_var.set("准备中…")
+        self.detail_var.set("")
+        self._set_progress(0.0)
         self.job = backends.Job()
         self.worker = threading.Thread(
             target=self._run_tasks,
@@ -702,7 +739,7 @@ class App:
                 tag = f"[{i}/{len(tasks)}] {config.SOURCE_LABEL[source]}"
                 emit("status", text=f"{tag} 开始…")
                 emit("progress", frac=-1.0, text="")
-                emit("pane", source=source, text="下载中…")
+                emit("pane", source=source)
 
                 problem = errors.check_prereqs(
                     source, outdir, config.COOKIES_BILI, use_cookies,
@@ -764,8 +801,12 @@ class App:
         elif kind == "pane":
             self.panes[kw["source"]].configure(bg=PANE_ACTIVE)
         elif kind == "ok":
+            self._done += 1
             path = kw.get("text", "")
-            self.panes[kw["source"]].configure(bg="#d8f5d8")
+            self.panes[kw["source"]].configure(bg=PANE_DONE)
+            # 状态栏必须跟着改。旧实现只改 detail_var，status_var 会一直停在
+            # 后端最后一句「拿到直链，开始下载…」上，视频早下完了还那么显示
+            self.status_var.set("下载完成")
             if os.path.isfile(path):
                 self.detail_var.set("完成：" + os.path.basename(path))
             else:                    # 批量任务（如收藏音乐）返回的是汇总文字
@@ -780,11 +821,18 @@ class App:
         elif kind == "tools_fail":
             self._tools_finished(False, kw.get("text"))
         elif kind == "failed":
-            self.panes[kw["source"]].configure(bg="#ffd9d9")
-            self.detail_var.set("失败：" + (kw.get("text") or "").splitlines()[0])
+            cancelled = (kw.get("text") or "").strip() == "已取消"
+            self.panes[kw["source"]].configure(
+                bg=PANE_IDLE if cancelled else PANE_FAIL)
             logging.warning("FAIL %s: %s", kw["source"], kw.get("text"))
-            # 主动取消不算失败，别弹错误框吓人
-            if (kw.get("text") or "").strip() != "已取消":
+            # 主动取消不算失败：不计入失败数、不弹框，状态栏交给 finished 收尾
+            if cancelled:
+                self.detail_var.set("已取消")
+            else:
+                self._fail += 1
+                self.status_var.set("下载失败")
+                self.detail_var.set(
+                    "失败：" + (kw.get("text") or "").splitlines()[0])
                 messagebox.showerror(
                     config.SOURCE_LABEL[kw["source"]] + " 下载失败",
                     kw.get("text", ""))
@@ -814,9 +862,13 @@ class App:
             self.busy = False
             self.go_btn.configure(state="normal")
             self.cancel_btn.configure(state="disabled")
-            self._set_progress(0.0)
-            if self.status_var.get().startswith("["):
-                self.status_var.set("全部结束")
+            # 收尾文案按本轮实际的成败计数算，不去猜 status_var 里剩了什么
+            # 字符串（旧实现用 startswith("[") 判断，后端只要中途改过状态就失效）
+            cancelled = self.job is not None and self.job.cancel.is_set()
+            self.status_var.set(_summary_status(self._done, self._fail, cancelled))
+            # 全成功就停在满格，别掉回 0% —— 那样看着像没下成功
+            self._set_progress(
+                1.0 if (self._done and not self._fail and not cancelled) else 0.0)
 
     def _set_progress(self, frac):
         if frac is None or frac < 0:
