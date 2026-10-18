@@ -22,6 +22,10 @@ tools/
 VideoDownloader-win64.zip
 SHA256SUMS.txt
 
+# 任何 exe 都不该进仓库：tools/ 兜得住运行时下载的 ffmpeg/yt-dlp，
+# 但根目录误放一个（比如把构建产物拷进来）就会被 git add . 跟踪
+*.exe
+
 # 本机个性化
 *.lnk
 settings.json

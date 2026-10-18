@@ -109,7 +109,7 @@ excludes = [
     # 会往 PYTHONPATH 塞 sitecustomize.py 来打补丁），PyInstaller 的模块图会
     # 顺着它把那份**外部代码**一起打进 exe —— 实测踩过一次：exe 里混进了
     # 某桌面客户端的「安全删除 shim」（会 monkey-patch os.remove / shutil.rmtree），
-    # 还带出了 CODEBUDDY_SESSION_ID、沙箱 IPC 地址等内部标识。
+    # 还带出了构建环境自有的会话 ID、沙箱 IPC 地址等与项目无关的内部标识。
     # 用户机器上不需要任何 site 定制，直接排除最干净。
     "sitecustomize",
     "usercustomize",

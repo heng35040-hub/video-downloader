@@ -5,6 +5,13 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)（采用日期格式 YYYY.MM.DD）。
 
+## [未发布]
+
+### 安全/卫生
+- `.gitignore` 补 `*.exe` 通配：防止构建产物被误拷贝进仓库根目录时被
+  `git add .` 跟踪（`tools/` 只兜得住运行时下载目录）
+- build.spec 注释去掉构建环境产品名，只保留通用表述
+
 ## [2026.10.18.4] - 2026-10-18
 
 ### 新增
