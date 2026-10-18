@@ -212,6 +212,18 @@ Playwright 和 yt-dlp 都自带 PyInstaller hook，会各自把 node 驱动 /
 程序界面右下角也有一个同样的按钮。或者，给仓库点个 Star、提 Issue
 反馈问题、或把这个工具分享给需要的人，同样是很好的支持。
 
+## 更新
+
+- **程序会自动提示**：启动时向 Gitee 查询一次版本号（每 24 小时最多一次，
+  不含任何个人信息）。有新版本时状态栏提示，点左下角「下载新版」可选
+  **从网盘下载**或**从 GitHub 下载**
+- **手动更新**：到 [Releases](https://github.com/heng35040-hub/video-downloader/releases/latest)
+  下载最新 exe，关掉程序、覆盖旧文件即可。**不需要卸载**——设置、登录态、
+  代理配置都在 `%LOCALAPPDATA%\VideoDownloader\`，覆盖 exe 不受影响
+- **订阅通知**：仓库页右上角 Watch → Custom → 只勾 **Releases**，
+  以后发新版会收到邮件
+- v2026.10.18.5 之前的版本没有自动检查功能，需要手动下载一次
+
 ## 常见问题
 
 **Q：打开时提示「Windows 已保护你的电脑」？**
