@@ -5,37 +5,9 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)（采用日期格式 YYYY.MM.DD）。
 
-## [2026.10.16.3] - 2026-10-16
+## [2026.10.16] - 2026-10-16
 
-### 新增
-- **使用须知页增加「在桌面创建快捷方式」勾选（默认勾选）**，同意后静默创建
-  —— 与市面安装向导的交互一致：先「我已阅读并同意上述全部条款」，
-  再「在桌面创建快捷方式」，用户第一次打开就能顺手把图标放好
-  - 创建放后台线程，不挡主窗口出现；失败只记日志、不弹框（首次启动就报错
-    很吓人），主界面左下角的同名按钮可随时重试
-  - 桌面已有同名快捷方式则跳过，不擅自覆盖
-  - `_show_disclaimer` 返回值由 `bool` 改为 `(是否同意, 是否要建快捷方式)`；
-    弹窗自身异常放行时返回 `(True, False)` —— 没弹出来就不擅自建快捷方式
-
-### 安全
-- **`build.spec` 的 `excludes` 增加 `sitecustomize` / `usercustomize`**：
-  这两个是「谁的环境谁注入」的钩子模块，打包机 `PYTHONPATH` 里若恰好有一个，
-  PyInstaller 的模块图会顺着它把**外部代码**一起打进 exe。
-  本地打包时实测踩中过一次：exe 里混进了某桌面客户端的「安全删除 shim」
-  （会 monkey-patch `os.remove` / `shutil.rmtree`），并带出内部会话标识
-  与沙箱 IPC 地址。GitHub Actions 的干净 runner 不受影响，仅本地打包会中招，
-  现已从打包配置层面根除（同时本地打包需清空 `PYTHONPATH`）
-- **桌面快捷方式改用环境变量传参**，去掉 `-EncodedCommand`（UTF-16LE + base64）：
-  脚本本体保持纯 ASCII，参数经 `VD_LNK_*` 环境变量传入（Windows 环境变量是
-  Unicode，中文没问题）。base64 命令行是恶意软件的常见混淆手法，容易拉高杀软的
-  启发式评分 —— 本程序未签名，经不起再加一层可疑特征。另加了一道保险丝：
-  脚本若混入非 ASCII 字符直接抛错
-- **`tests.yml` 补装 `yt-dlp`**：`TestBundledYtdlp` 断言 `import yt_dlp` 可用，
-  而该工作流原先只装 pytest，干净 runner 上 4 项必红（已用干净环境模拟 runner
-  复现：`4 failed, 57 passed`）。yt-dlp 仅约 3 MB，不违背「不装
-  requests/playwright」的初衷
-
-## [2026.10.16.2] - 2026-10-16
+> 首个正式发布版本。此前的 2026.10.04 / 10.12 / 10.15 均为未发布的开发版本。
 
 ### 新增
 - **首次启动的「使用须知」勾选**：首次运行（以及须知正文改版后）弹出免责
@@ -44,38 +16,44 @@
   （`config.DISCLAIMER_VERSION`），正文一改版本号跟着变，老用户会重新看到
   并重新确认 —— 这是「已尽告知义务」最直接的证据，也是 README 免责声明的
   界面化落地
-- **「创建桌面快捷方式」按钮**（界面左下角）：一键在桌面生成 `视频下载器.lnk`
+- **创建桌面快捷方式**：界面左下角按钮 + 使用须知页勾选（默认勾选，与市面
+  安装向导一致）两个入口，一键在桌面生成 `视频下载器.lnk`
   - 打包后指向 exe 自己；源码运行时指向 `pythonw.exe` + `main.py`
   - 已存在同名快捷方式时**先询问**是否覆盖，不擅自改动用户的图标与命名
+  - 从须知页勾选则同意后后台静默创建，失败只记日志、不弹框（首次启动就报错
+    很吓人），主界面左下角的同名按钮可随时重试
   - 实现走 PowerShell 的 `WScript.Shell`（Windows 上建 `.lnk` 唯一的免依赖
-    方式）。脚本用 `-EncodedCommand`（UTF-16LE + base64）传入、结果写 UTF-8
-    临时文件再读回 —— 本机 PowerShell 5.1 对非 ASCII 的**命令行参数**与
-    **管道输出**编码都取决于控制台代码页，直传中文会变乱码
-- `tests/test_disclaimer.py`：14 项新测试（须知常量、同意状态读写、
-  快捷方式目标解析、`ShortcutExists`），总测试数 47 → 61
-
-### 变更
-- `.gitignore` 补 `settings.json` / `settings.json.tmp`：源码运行时
-  `USER_DATA_DIR` 就是仓库根目录，同意状态会落在那里，不能进仓库
-
-## [2026.10.16.1] - 2026-10-16
-
-> 这一版是 `v2026.10.16` 的修正发布：exe 里嵌的版本号此前漏改（还是
-> 2026.10.15.0），且该版本发布时还没包含内置 yt-dlp、ffmpeg 多源等改动。
-> 见 [v2026.10.16](https://github.com/heng35040-hub/video-downloader/releases/tag/v2026.10.16)
-> 与本版的变更明细。
-
-### 变更
+    方式），参数经 `VD_LNK_*` 环境变量传入，结果写 UTF-8 临时文件再读回
 - **yt-dlp 改为内置**：不再依赖首次启动从 GitHub 下载。国内直连 GitHub 的
   可达性不稳定，而只用 B站/抖音等国内平台、不开代理的用户一旦下载失败，
   B站 这类主平台也直接用不了。现在 yt-dlp 作为普通依赖打包进程序，
-  开箱即用、首次启动**不需要联网下载**（包体积 51.2 → 57.8 MB）
-  - `config.YTDLP_CMD` 改为**命令行列表**，优先级：
-    `tools\yt-dlp.exe` → 内置 `yt_dlp` 模块 → PATH
-  - 冻结时内置那份的调用方式是 `[本 exe, "--ytdlp-cli", ...]`，
-    由 `main.py` 顶部提前分发 —— 复用原有的「子进程 + 逐行读 stdout +
-    杀进程树取消」机制，`backends.py` 一行逻辑都没改
-  - 首次启动现在只需要下载 ffmpeg
+  开箱即用、首次启动**不需要联网下载**（包体积 51.2 → 57.8 MB）；
+  首次启动现在只需要下载 ffmpeg
+- **抖音原声下载**：音乐页链接直接存 mp3；支持批量下载「收藏 → 音乐」，
+  下载前可勾选
+- **抖音/快手免扫码**：登录一次长期有效（登录态保存在本地，不上传任何地方）
+- **画质选择**：最高 / 1080p / 720p / 480p，对 yt-dlp 系平台生效；
+  平台上没有达标清晰度时自动取最优，不报错
+- **代理智能分流**：被墙平台（YouTube / X / Instagram / TikTok）自动走
+  本机代理，国内平台强制直连
+- **实时进度与取消**：进度条 + 已下载体积，随时取消不留半个损坏文件
+- **拖拽 / 剪贴板自动识别**：复制链接后切回窗口即自动填入对应平台格子
+- `main.py --selftest`：冻结产物无界面自检（Playwright 驱动、tkinterdnd2
+  原生库、requests、**内置 yt-dlp 可执行**——真实跑一次
+  `--ytdlp-cli --version`，并给出「引导程序解压 / 模块导入 / 自检内部」
+  分段耗时），CI 在构建后执行，防止「构建成功但运行缺文件」；
+  用户反馈启动慢时也靠它定位
+- `requirements.txt` / `requirements-dev.txt` 依赖声明文件
+- `tests/` 单元测试 61 项（URL 抠取、平台识别、报错翻译、内置 yt-dlp 的
+  命令行解析、使用须知状态读写、快捷方式目标解析），纯逻辑、不联网
+- `.github/workflows/tests.yml`：push / PR 自动跑 pytest（Python 3.10 / 3.12）
+- `.github/ISSUE_TEMPLATE/`：Bug 报告表单与联系入口
+
+### 变更
+- `config.YTDLP_CMD` 改为**命令行列表**，优先级：
+  `tools\yt-dlp.exe` → 内置 `yt_dlp` 模块 → PATH；冻结时内置那份的调用方式是
+  `[本 exe, "--ytdlp-cli", ...]`，由 `main.py` 顶部提前分发 —— 复用原有的
+  「子进程 + 逐行读 stdout + 杀进程树取消」机制，`backends.py` 一行逻辑没改
 - 移除代码中的机器特定路径（本机 Python 安装目录、素材盘等），统一改为
   `tools/` 目录 → PATH → `~/Downloads` 的解析顺序，任何机器开箱即用
 - 移除仓库内的收款二维码图片；打赏入口改为接入爱发电主页
@@ -91,20 +69,8 @@
   的 chromium，包体积更小；浏览器启动失败时给出普通用户可执行的中文提示
 - `build.spec` 的 `CompanyName` 改为中性的 "Video Downloader"
 - CI 统一改用 `requirements.txt` 安装依赖
-
-### 新增
-- `requirements.txt` / `requirements-dev.txt` 依赖声明文件
-- `tests/` 单元测试（URL 抠取、平台识别、报错翻译），纯逻辑、不联网
-- `.github/workflows/tests.yml`：push / PR 自动跑 pytest（Python 3.10 / 3.12）
-- `.github/ISSUE_TEMPLATE/`：Bug 报告表单与联系入口
-- `main.py --selftest`：冻结产物无界面自检（Playwright 驱动、tkinterdnd2
-  原生库、requests、**内置 yt-dlp 可执行**——真实跑一次
-  `--ytdlp-cli --version`，并给出「引导程序解压 / 模块导入 / 自检内部」
-  分段耗时），CI 在构建后执行，防止「构建成功但运行缺文件」；
-  用户反馈启动慢时也靠它定位
-- `tests/test_config.py` 新增 `TestBundledYtdlp`：覆盖内置 yt-dlp 的
-  命令行解析、开发/冻结两种调用方式、以及 `backends._base_args` 必须
-  把 `YTDLP_CMD` 原样放在参数最前面（共 5 项，总测试数 42 → 47）
+- `.gitignore` 补 `settings.json` / `settings.json.tmp`：源码运行时
+  `USER_DATA_DIR` 就是仓库根目录，同意状态会落在那里，不能进仓库
 
 ### 修复
 - **ffmpeg 一键下载加入多源自动切换**：原先只用 gyan.dev 一个源，实测
@@ -135,7 +101,23 @@
 - README / Release 文案修正：onefile 的启动延迟是**每次**启动，而非仅首次
 
 ### 安全
-- 重写 git 历史，彻底清除历史提交中残留的本机路径文件
+- **`build.spec` 的 `excludes` 增加 `sitecustomize` / `usercustomize`**：
+  这两个是「谁的环境谁注入」的钩子模块，打包机 `PYTHONPATH` 里若恰好有一个，
+  PyInstaller 的模块图会顺着它把**外部代码**一起打进 exe。
+  本地打包时实测踩中过一次：exe 里混进了某桌面客户端的「安全删除 shim」
+  （会 monkey-patch `os.remove` / `shutil.rmtree`），并带出内部会话标识
+  与沙箱 IPC 地址。GitHub Actions 的干净 runner 不受影响，仅本地打包会中招，
+  现已从打包配置层面根除（同时本地打包需清空 `PYTHONPATH`）
+- **桌面快捷方式改用环境变量传参**，去掉 `-EncodedCommand`（UTF-16LE + base64）：
+  脚本本体保持纯 ASCII，参数经 `VD_LNK_*` 环境变量传入（Windows 环境变量是
+  Unicode，中文没问题）。base64 命令行是恶意软件的常见混淆手法，容易拉高杀软
+  的启发式评分 —— 本程序未签名，经不起再加一层可疑特征。另加了一道保险丝：
+  脚本若混入非 ASCII 字符直接抛错
+- **`tests.yml` 补装 `yt-dlp`**：`TestBundledYtdlp` 断言 `import yt_dlp` 可用，
+  而该工作流原先只装 pytest，干净 runner 上 4 项必红（已用干净环境模拟 runner
+  复现：`4 failed, 57 passed`）。yt-dlp 仅约 3 MB，不违背「不装
+  requests/playwright」的初衷
+- 重写 git 历史，彻底清除历史提交中残留的本机路径文件与收款二维码图片
 
 ## [2026.10.15] - 2026-10-15
 
@@ -167,7 +149,7 @@
 ## [2026.10.04] - 2026-10-04
 
 ### 新增
-- 初始版本：支持 10 平台（YouTube、B站、抖音、X、Instagram、快手、小红书、微博、西瓜、TikTok）
+- 初始开发版本：支持 10 平台（YouTube、B站、抖音、X、Instagram、快手、小红书、微博、西瓜、TikTok）
 - Tkinter GUI：拖拽/剪贴板自动识别、多平台并发下载、画质选择、实时进度、取消不留损坏文件
 - 代理智能分流：被墙平台自动走代理，国内平台强制直连
 - 抖音原声下载 + 收藏音乐批量下载（勾选 + 断点续传）
