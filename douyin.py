@@ -32,6 +32,31 @@ _FAV_MUSIC_MARK = ("/user/self", "showSubTab=music")
 
 _MEDIA_HINT = ("douyinvod.com", "/video/tos/")   # 子域名一直在换，别写死 v26-web
 
+# 抖音高画质走 DASH：视频、音频是两条独立流。**音频的 content-type 也是
+# video/mp4**，只能靠 URL 里的段名区分（实测形如
+# .../video/tos/cn/tos-cn-ve-15/.../media-audio-und-mp4a/?a=6383&br=51...）。
+# 曾经只取体积最大的一路，音频被丢掉 —— 症状是「下载的视频没声音」。
+_AUDIO_MARK = ("media-audio-", "/audio/", "audio-")
+
+
+def _classify_media_url(url):
+    """判断响应 URL 属于音频轨还是视频轨；都不是返回 None。
+
+    纯函数（只按 URL 字符串判），方便单测 —— 浏览器抓包的逻辑没法测，
+    分类规则必须单独锁住。
+
+    注意别把「/video/」当视频标记：普通页面链接
+    （https://www.douyin.com/video/123）也含它。音频必须先判，
+    因为音频 URL 里同样带 /video/。
+    """
+    if not url:
+        return None
+    if any(m in url for m in _AUDIO_MARK):
+        return "audio"
+    if any(h in url for h in _MEDIA_HINT):
+        return "video"
+    return None
+
 # 抖音的 CDN 对视频/音频走 HTTP Range 分段请求，返回 **206 Partial Content**
 # 而不是 200。早先只认 200，导致页面明明在正常播放、一个流都抓不到 ——
 # 症状是「没能从页面里抓到视频流」，很容易误判成登录墙。
@@ -189,14 +214,17 @@ def _video_id(url, session):
 
 
 def _capture(page_url, job, headless=True, timeout=30, emit=None):
-    """用浏览器打开视频页，捞 CDN 直链。返回 (直链, 标题)。
+    """用浏览器打开视频页，捞 CDN 直链。
 
-    emit 传入时，会在有头窗口里实时汇报登录状态：用户扫码成功后立刻把
-    「请扫码登录」换成「已登录」，而不是一直挂着那句提示让人以为卡死了。
+    返回 (视频直链, 音频直链或None, 标题)。抖音高画质是 DASH：视频、音频
+    两条独立流，URL 分别带 media-video-* / media-audio-*（content-type 都是
+    video/mp4，只能按 URL 分）。曾经只取体积最大的一路，音频被丢掉，
+    症状是「下载的视频没声音」。
     """
     from playwright.sync_api import sync_playwright
 
-    found = []          # [(url, 文件总大小)]
+    found = []          # [(url, 文件总大小)] 视频轨
+    audios = []         # [(url, 文件总大小)] 音频轨
 
     with sync_playwright() as p:
         ctx = _open_context(p, headless)
@@ -215,9 +243,11 @@ def _capture(page_url, job, headless=True, timeout=30, emit=None):
                     headers = resp.headers or {}
                     if not headers.get("content-type", "").startswith("video/"):
                         return
-                    if not any(h in resp.url for h in _MEDIA_HINT):
-                        return
-                    found.append((resp.url, _media_size(headers)))
+                    kind = _classify_media_url(resp.url)
+                    if kind == "audio":
+                        audios.append((resp.url, _media_size(headers)))
+                    elif kind == "video":
+                        found.append((resp.url, _media_size(headers)))
                 except Exception:
                     pass
 
@@ -245,7 +275,7 @@ def _capture(page_url, job, headless=True, timeout=30, emit=None):
 
             while time.time() < deadline and not found:
                 if job and job.cancel.is_set():
-                    return None, None
+                    return None, None, None
                 now = time.time()
 
                 # 有头窗口里实时播报登录状态：扫码成功后立刻改提示，
@@ -278,6 +308,16 @@ def _capture(page_url, job, headless=True, timeout=30, emit=None):
                         pass
                 page.wait_for_timeout(250)
 
+            # DASH 的音频流经常比视频流晚一个请求周期才发出。视频已到手就
+            # 给它 3 秒——等不到就按单流处理，绝不让用户干等。
+            # 必须放在 ctx.close() 之前：浏览器关了 page 就不能用了。
+            if found and not audios:
+                grace = time.time() + 3
+                while time.time() < grace and not audios:
+                    if job and job.cancel.is_set():
+                        return None, None, None
+                    page.wait_for_timeout(300)
+
             title = None
             try:
                 title = page.title()
@@ -290,9 +330,11 @@ def _capture(page_url, job, headless=True, timeout=30, emit=None):
                 pass
 
     if not found:
-        return None, title
-    found.sort(key=lambda t: t[1], reverse=True)   # 取体积最大的那路
-    return found[0][0], title
+        return None, None, title
+
+    found.sort(key=lambda t: t[1], reverse=True)   # 视频轨取体积最大的那路
+    audios.sort(key=lambda t: t[1], reverse=True)  # 音频轨同理
+    return found[0][0], (audios[0][0] if audios else None), title
 
 
 def _sanitize(title):
@@ -468,14 +510,43 @@ def _sniff_audio(path):
     return None
 
 
-def _to_mp3(src, dst):
-    """ffmpeg 转成 mp3（q2 约等于 190kbps VBR，听感和体积平衡）。"""
-    import subprocess
+def _ffmpeg_exe():
+    """ffmpeg 可执行文件路径；找不到返回 None。"""
     import sys
 
     exe = os.path.join(config.FFMPEG_DIR,
                        "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
-    if not os.path.isfile(exe):
+    return exe if os.path.isfile(exe) else None
+
+
+def _merge_dash(vpath, apath, dest):
+    """把抖音 DASH 的视频轨和音频轨合并成一个 mp4。
+
+    -c copy 不重编码 —— 两条流本来就是 mp4/m4a，直接封一起，秒级完成。
+    """
+    import subprocess
+
+    exe = _ffmpeg_exe()
+    if not exe:
+        return False
+    try:
+        r = subprocess.run(
+            [exe, "-v", "error", "-y", "-i", vpath, "-i", apath,
+             "-c", "copy", dest],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=procutil.CREATE_NO_WINDOW, timeout=300)
+    except Exception:
+        return False
+    return (r.returncode == 0 and os.path.isfile(dest)
+            and os.path.getsize(dest) > 0)
+
+
+def _to_mp3(src, dst):
+    """ffmpeg 转成 mp3（q2 约等于 190kbps VBR，听感和体积平衡）。"""
+    import subprocess
+
+    exe = _ffmpeg_exe()
+    if not exe:
         return False
     try:
         r = subprocess.run(
@@ -769,22 +840,46 @@ def download_douyin(url, outdir, emit, job, chooser=None):
                 # 具体提示由 _capture 按实际登录状态播报（已登录 / 待扫码）
                 emit("status", text="正在打开浏览器…")
 
-            media, title = _capture(page_url, job,
-                                    headless=headless, timeout=wait, emit=emit)
+            media, audio, title = _capture(page_url, job,
+                                            headless=headless, timeout=wait,
+                                            emit=emit)
             if not media:
                 last_err = "没能从页面里抓到视频流"
                 continue
 
             emit("status", text="拿到直链，开始下载…")
             dest = _dest_path(outdir, title, vid)
+            # DASH 的两条流先下到临时文件，合并成功才算完成 ——
+            # 合并失败时退回纯视频（有画面比白等强），但会明确告诉用户
+            tmp_v, tmp_a = dest + ".v", dest + ".a"
             try:
-                _download(media, dest, session, emit, job)
+                _download(media, tmp_v, session, emit, job)
+                if not audio:
+                    os.replace(tmp_v, dest)
+                    return True, dest
+
+                emit("status", text="正在合并音视频…")
+                # 音频通常只有几十 KB，没必要再刷一次进度条
+                _download(audio, tmp_a, session,
+                          lambda kind, **kw: None, job)
+                if _merge_dash(tmp_v, tmp_a, dest):
+                    return True, dest
+
+                os.replace(tmp_v, dest)
+                emit("status", text="音视频合并失败，只保存了画面部分")
                 return True, dest
             except _Cancelled:
                 return False, "已取消"
             except Exception as exc:
                 # 直链过期是最常见的瞬态失败（403），重捕一次即可
                 last_err = f"下载直链失败：{exc}"
+            finally:
+                for t in (tmp_v, tmp_a):
+                    if os.path.isfile(t):
+                        try:
+                            os.remove(t)
+                        except OSError:
+                            pass
 
         return False, (f"抖音解析失败：{last_err}\n\n"
                        "抖音对未登录访问有登录墙 —— 重试一次，在弹出的浏览器"

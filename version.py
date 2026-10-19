@@ -9,4 +9,4 @@
 config.py 导入时会做那些事，因此 build.spec 绝不能直接 import config。
 """
 
-VERSION = "2026.10.18.9"
+VERSION = "2026.10.19.1"

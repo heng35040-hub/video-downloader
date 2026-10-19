@@ -5,6 +5,19 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)（采用日期格式 YYYY.MM.DD）。
 
+## [2026.10.19.1] - 2026-10-19
+
+### 修复
+- **抖音下载的视频没有声音**：抖音高画质是 DASH，视频、音频是两条独立流
+  （URL 分别带 `media-video-*` / `media-audio-und-mp4a`，**两者的
+  content-type 都是 video/mp4**）。原实现只取体积最大的一路并直接存盘，
+  音频轨被丢掉。现在按 URL 分离两路，分别下载后用 ffmpeg `-c copy`
+  合并（不重编码，秒级完成）；合并失败时退回纯视频并明确告知用户
+- 视频流到手后多等 3 秒给音频流（它常晚一个请求周期），等不到按单流处理
+
+### 构建/工具
+- 无
+
 ## [未发布]
 
 ### 构建/工具

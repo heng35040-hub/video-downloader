@@ -73,3 +73,36 @@ class TestLoggedIn:
             def cookies(self):
                 raise RuntimeError("boom")
         assert douyin._logged_in(Bad()) is False
+
+
+class TestClassifyMediaUrl:
+    # 抖音高画质是 DASH：视频、音频两条流，URL 分别带 media-video-* /
+    # media-audio-*（都是真实抓包样本）。音频的 content-type 也是
+    # video/mp4，只能按 URL 判 —— 判错就是「下载的视频没声音」。
+
+    VIDEO = ("https://v26-weba.douyinvod.com/c7a185ab85664e2689ee86d9bcb5c3d0/"
+             "6ad712d6/video/tos/cn/tos-cn-vd-0026/o8AAAO5elsqAfBTAwEDZ3Rv7"
+             "CnM9EWFgAyEAql/media-video-avc1/?a=6383&br=1057&bt=1057")
+    AUDIO = ("https://v26-weba.douyinvod.com/ed78ed15618c174c38ba5cb3c6d2ca41/"
+             "6ad712d6/video/tos/cn/tos-cn-ve-15/oAZcfADnqXEAMF9Eqs5vWACAgRe7"
+             "BlHAAAwZE3/media-audio-und-mp4a/?a=6383&br=51&bt=51")
+
+    def test_video_stream(self):
+        assert douyin._classify_media_url(self.VIDEO) == "video"
+
+    def test_audio_stream(self):
+        assert douyin._classify_media_url(self.AUDIO) == "audio"
+
+    def test_audio_by_path_marker(self):
+        assert douyin._classify_media_url(
+            "https://v3-x.douyinvod.com/a/b/audio/c.mp4") == "audio"
+
+    def test_effect_cdn_is_not_main_video(self):
+        # 页面装饰动画的 mp4，不能当成主视频轨
+        url = ("https://lf6-effectcdn-tos.byteeffecttos.com/obj/ies.fe.effect/"
+               "73a925431aac3cf511e0fb73158c9be8.mp4")
+        assert douyin._classify_media_url(url) is None
+
+    @pytest.mark.parametrize("bad", ["", None, "https://www.douyin.com/video/123"])
+    def test_non_media(self, bad):
+        assert douyin._classify_media_url(bad) is None
