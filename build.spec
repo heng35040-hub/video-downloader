@@ -9,6 +9,18 @@ from PyInstaller.utils.win32 import versioninfo
 # Get the project root directory (spec file location)
 PROJECT_ROOT = os.getcwd()
 
+# 版本号唯一来源：version.py（纯常量模块，零副作用）。
+# ⚠️ 不要在这里 import config —— config 导入时会建目录、探测代理端口，
+#    构建期执行那些东西既慢又容易在 CI 上出意外。
+sys.path.insert(0, PROJECT_ROOT)
+import version  # noqa: E402
+
+VERSION_STR = version.VERSION
+_parts = [int(p) for p in VERSION_STR.split(".")]
+while len(_parts) < 4:          # Windows 版本资源固定要 4 段
+    _parts.append(0)
+VERSION_TUPLE = tuple(_parts[:4])
+
 # Hidden imports for packages that PyInstaller might miss
 hiddenimports = [
     "tkinter",
@@ -122,13 +134,13 @@ main_script = os.path.join(PROJECT_ROOT, "main.py")
 icon_path = None
 
 # Version info for Windows
-# ⚠️ 每次发版都要同步更新这里（外加 CHANGELOG 和 tag 名），
-#    否则 exe 属性里显示的「文件版本」会和实际发布版本对不上。
-#    曾经就因为漏改，v2026.10.16 的 exe 里嵌的还是 2026.10.15.0。
+# 版本号从 version.py 读（见文件头），这里不再手写。
+# 历史事故：曾经漏改这里，v2026.10.16 的 exe 里嵌的还是 2026.10.15.0，
+# 用户报版本号时对不上，没法核实他装的到底是哪一版。
 ver_info = versioninfo.VSVersionInfo(
     ffi=versioninfo.FixedFileInfo(
-        filevers=(2026, 10, 18, 9),
-        prodvers=(2026, 10, 18, 9),
+        filevers=VERSION_TUPLE,
+        prodvers=VERSION_TUPLE,
         mask=0x3F,
         flags=0,
         OS=0x40004,
@@ -144,12 +156,12 @@ ver_info = versioninfo.VSVersionInfo(
                     [
                         versioninfo.StringStruct("CompanyName", "Video Downloader"),
                         versioninfo.StringStruct("FileDescription", "Video Downloader"),
-                        versioninfo.StringStruct("FileVersion", "2026.10.18.9"),
+                        versioninfo.StringStruct("FileVersion", VERSION_STR),
                         versioninfo.StringStruct("InternalName", "VideoDownloader"),
                         versioninfo.StringStruct("LegalCopyright", "MIT License"),
                         versioninfo.StringStruct("OriginalFilename", "VideoDownloader.exe"),
                         versioninfo.StringStruct("ProductName", "Video Downloader"),
-                        versioninfo.StringStruct("ProductVersion", "2026.10.18.9"),
+                        versioninfo.StringStruct("ProductVersion", VERSION_STR),
                     ],
                 ),
             ],

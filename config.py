@@ -156,9 +156,9 @@ PROFILE_BILI = os.path.join(USER_DATA_DIR, "profile_bili")
 SETTINGS_FILE = os.path.join(USER_DATA_DIR, "settings.json")
 
 # ---- 版本与更新检查 ----
-# ⚠️ VERSION 必须与 build.spec 的 filevers/prodvers/FileVersion/ProductVersion
-# 四处同步，否则「检查更新」会误判（发版流程里已列为必查项）。
-VERSION = "2026.10.18.9"
+# 版本号的唯一来源是 version.py（build.spec 也从那里读，避免两处手抄）。
+# 这里 re-export 成 config.VERSION，调用方写法不变。
+from version import VERSION  # noqa: E402,F401
 
 # 版本清单放 Gitee：国内直连可达，不需要用户有代理。
 # 内容形如 {"version": "2026.10.19", "notes": "修复抖音",

@@ -5,6 +5,18 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)（采用日期格式 YYYY.MM.DD）。
 
+## [未发布]
+
+### 构建/工具
+- 版本号改为**唯一来源**：新增 `version.py`（纯常量，零副作用），`config.py`
+  re-export，`build.spec` 从它派生 filevers/prodvers/FileVersion/ProductVersion。
+  以前同一个版本号要手抄五处（两套写法），漏一处**程序照跑、测试照过，
+  只有用户会遇到问题**——曾经 v2026.10.18.16 的 exe 里嵌的还是 2026.10.15.0
+- CI 加一道「Verify version consistency」：exe 内嵌版本必须等于 version.py，
+  tag 也必须对得上，任一不符直接让构建失败。当初那次事故就是这么漏的
+- tests/test_version.py 4 项守卫（格式、config re-export、build.spec 不许再有
+  硬编码版本号、必须从 version 派生）；总测试 190 → 194
+
 ## [2026.10.18.9] - 2026-10-18
 
 ### 新增

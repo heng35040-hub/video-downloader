@@ -103,6 +103,21 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "冻结产物自检失败（退出码 $($p.ExitCode)）" }
           if (-not (Select-String -Path $out -Pattern 'RESULT: PASS' -Quiet)) { throw "自检报告不是 PASS" }
 
+      # 版本号守卫：exe 内嵌版本必须等于 version.py，tag 也要对得上。
+      # 历史事故：v2026.10.16 的 exe 里嵌的还是 2026.10.15.0，用户报版本号时
+      # 根本没法核实他装的到底是哪一版。这道检查就是为那次事故加的。
+      - name: Verify version consistency
+        run: |
+          $ver = (Select-String -Path version.py -Pattern 'VERSION\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          $exe = (Get-Item dist\VideoDownloader.exe).VersionInfo.FileVersion
+          Write-Host "version.py = $ver"
+          Write-Host "exe        = $exe"
+          if ($exe -ne $ver) { throw "exe 内嵌版本($exe) 与 version.py($ver) 不一致" }
+
+          $tag = "${{ inputs.version || github.ref_name }}"
+          Write-Host "tag        = $tag"
+          if ($tag -ne "v$ver") { throw "tag($tag) 与 version.py(v$ver) 不一致" }
+
       # zip 只是为了网页下载/转发方便，真正的产物是 exe 本身，
       # 所以下面会同时把 exe 挂到 Release 上。
       - name: Package release zip
