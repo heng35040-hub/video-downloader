@@ -564,13 +564,22 @@ class App:
         grid.pack(fill="both", expand=True)
         cols = 5
         for c in range(cols):
-            grid.columnconfigure(c, weight=1)
+            # uniform 保证各列平分宽度，不会因为某格被长链接撑大导致整列变形
+            grid.columnconfigure(c, weight=1, uniform="platform_cols")
         for r in range((len(config.SOURCES) + cols - 1) // cols):
-            grid.rowconfigure(r, weight=1)
+            grid.rowconfigure(r, weight=1, uniform="platform_rows")
         for i, source in enumerate(config.SOURCES):
             self.panes[source] = self._make_pane(grid, source)
             self.panes[source].grid(row=i // cols, column=i % cols,
                                     sticky="nsew", padx=5, pady=4)
+
+        def _on_grid_configure(event):
+            # 动态调整各格子的文字折行宽度，跟随窗口缩放保持居中美观且不撑大列
+            w = max(60, event.width // cols - 24)
+            for pane in self.panes.values():
+                pane.configure(wraplength=w)
+
+        grid.bind("<Configure>", _on_grid_configure)
 
         status_row = ttk.Frame(outer)
         status_row.pack(fill="x", pady=(6, 0))
@@ -705,7 +714,7 @@ class App:
             "把链接拖到这里" if self.dnd_ok else "点这里，然后粘贴链接")
         lbl = tk.Label(parent, text=text, relief="ridge", bd=2,
                        bg=PANE_IDLE, fg="#333", justify="center",
-                       cursor="hand2", padx=6, pady=10)
+                       cursor="hand2", padx=6, pady=10, wraplength=140)
         lbl.bind("<Button-1>", lambda _e, s=source: self._select(s))
 
         if self.dnd_ok:

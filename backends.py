@@ -50,6 +50,7 @@ def _base_args(source, outdir, use_cookies, max_height=None, proxy=None,
                section=None):
     args = [
         *config.YTDLP_CMD,
+        "--ignore-config",      # 隔离用户全局 yt-dlp 配置（如 ~/.config/yt-dlp/config）
         "--no-playlist",        # 贴了带 &list= 的链接时，别默默下一整个播放列表
         "--no-simulate",        # --print 默认会打开 simulate，必须显式关掉
         "--quiet",              # 只保留进度和错误，输出干净好解析
@@ -88,6 +89,9 @@ def _base_args(source, outdir, use_cookies, max_height=None, proxy=None,
     else:
         # 国内站必须直连。显式传空串关掉代理，同时 build_env 会清掉代理环境变量
         args += ["--proxy", ""]
+        if source == "bilibili":
+            # B站特定 CDN 节点在未登录直连时必须显式带 Range 头，否则会报 HTTP 567: Unknown Status
+            args += ["--add-headers", "Range:bytes=0-"]
         # cookies 只有 B站 有；以前这里只判 use_cookies，别的国内站也会被塞进
         # B站的 cookies 文件，属于逻辑错误
         if use_cookies and source == "bilibili":
@@ -144,7 +148,8 @@ def probe_formats(url, source, use_cookies=False, timeout=45, proxy=None):
 
     try:
         proc = subprocess.run(cmd, capture_output=True, timeout=timeout,
-                              env=procutil.build_env(no_proxy=not blocked))
+                              env=procutil.build_env(no_proxy=not blocked),
+                              creationflags=procutil.CREATE_NO_WINDOW)
     except subprocess.TimeoutExpired:
         return None, "解析超时"
     except Exception as exc:

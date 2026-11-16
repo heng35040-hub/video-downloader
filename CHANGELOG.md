@@ -5,6 +5,23 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)（采用日期格式 YYYY.MM.DD）。
 
+## [2026.11.16.1] - 2026-11-16
+
+### 修复
+- **长链接撑大卡片网格**：将长链接拖入/输入卡片时，同列其他卡片（如抖音与微博）会被拉宽变形。现为 Tkinter Grid 增加 `uniform` 等宽等高约束，并增加自适应文字折行，确保所有平台卡片始终严格对称。
+- **快手下载失败及闪现 CMD 窗口**：
+  - 快手部分分享短链及网页端链接返回 `result: 2` 被误判为已删除；现重构解析内核，直接支持移动端 `window.INIT_STATE` 无水印高清直链解析；
+  - 优先采用系统原生网络管道抓取移动端页面，规避快手针对 Python OpenSSL 的 TLS 指纹与风控拦截；
+  - 为所有外部子进程调用统一添加 `CREATE_NO_WINDOW` 标志，彻底消除下载和解析时闪现黑框 CMD 窗口的瑕疵。
+- **B站 HTTP 567 报错**：B站部分 CDN 节点直连下载时需带 Range 请求头，补充 `--add-headers Range:bytes=0-`。
+- **用户全局 yt-dlp 配置污染**：添加 `--ignore-config`，避免用户本地 `%APPDATA%\yt-dlp\config.txt` 中的全局代理干扰国内平台直连。
+- **浏览器 UA 矫正**：修正默认伪装 User-Agent（由非法的未来版本 Chrome/153 调整为主流 Chrome/131），避免触发目标平台反爬。
+
+### 优化
+- 完善小红书纯图文、TikTok 代理/IP 限制、快手失效视频的中文友好提示。
+- 扩展本地 ffmpeg / yt-dlp 查找路径，支持 `%LOCALAPPDATA%\VideoDownloader\tools`。
+- 新增 `tests/test_layout.py` 自动化布局测试。
+
 ## [2026.10.19.1] - 2026-10-19
 
 ### 修复

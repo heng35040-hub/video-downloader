@@ -40,7 +40,7 @@ CASES = {
     "kuaishou": {"url": "https://www.kuaishou.com/short-video/3xwrzgsfd5fyjyg"},
     "douyin": {"url": "https://www.douyin.com/music/7149936801028131598"},
     "youtube": {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
-    "bilibili": {"url": "https://www.bilibili.com/video/BV1GJ411x7h7"},
+    "bilibili": {"url": "https://www.bilibili.com/video/BV1xx411c7mD"},
     "x": {"url": "https://x.com/captainamerica/status/719944021058060289"},
     "instagram": {"url": "https://www.instagram.com/reel/Chunk8-jurw/"},
     "xiaohongshu": {"url": "https://www.xiaohongshu.com/explore/6411cf99000000001300b6d9"},
@@ -57,7 +57,8 @@ SMOKE_MAX_HEIGHT = 480
 _SKIP_HINTS = ("404", "not found", "已删除", "不存在", "没有视频",
                "私密", "private", "不可用", "unavailable", "代理",
                "proxy", "找不到 yt-dlp", "没有找到", "no video formats",
-               "blocked", "ip address", "cookies", "timed out")
+               "blocked", "ip address", "cookies", "timed out",
+               "纯图文", "未找到视频数据", "验证码")
 
 
 def _run_one(source, case, outdir):

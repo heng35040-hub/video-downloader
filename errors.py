@@ -98,8 +98,8 @@ def friendly(raw, source, proxy=None):
         if any(k in s for k in ("login", "登录", "authenticate", "461", "403")):
             return ("小红书网页版对未登录访问限制很严，这条笔记需要登录"
                     "才能看。目前暂不支持携带登录信息，可换一条公开笔记试。")
-        if any(k in s for k in ("not found", "404")):
-            return "笔记不存在、已删除，或里面没有视频（纯图片笔记下不了）。"
+        if any(k in s for k in ("not found", "404", "no video", "no formats", "no video formats")):
+            return "笔记不存在、已删除，或里面没有视频（纯图文笔记下不了）。"
 
     if source == "weibo":
         if any(k in s for k in ("login", "登录", "visitor", "passport")):
@@ -112,13 +112,19 @@ def friendly(raw, source, proxy=None):
             return "视频不存在或已删除。"
 
     if source == "tiktok":
-        if any(k in s for k in ("login", "captcha", "not available", "region")):
-            return ("TikTok 对未登录访问和代理 IP 限制很严，可重试几次；"
-                    "仍失败多半是这条视频需要登录或地区受限。")
+        if any(k in s for k in ("login", "captcha", "not available", "region", "blocked", "ip address", "ip", "unexpected response", "challenge")):
+            return ("TikTok 对未登录访问和代理 IP 限制很严（可能提示 IP 被限制或反爬拦截），"
+                    "建议更换代理节点或稍后重试；若需登录的内容目前不支持。")
         if any(k in s for k in ("connection refused", "failed to resolve",
                                 "timed out", "proxy")):
             return (f"连不上代理（{proxy_disp}）。请确认代理软件已经启动；"
                     "端口不同可在界面「代理」一栏填。")
+
+    if source == "kuaishou":
+        if any(k in s for k in ("404", "not found", "已删除", "不存在", "result\":2")):
+            return "视频不存在或已删除。"
+        if any(k in s for k in ("captcha", "验证码")):
+            return "快手触发了人机验证，请稍后重试。"
 
     tail = _last_meaningful(raw)
     return "下载失败：" + (tail or "未知错误")

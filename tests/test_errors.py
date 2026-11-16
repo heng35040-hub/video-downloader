@@ -66,6 +66,18 @@ class TestFriendly:
         msg = errors.friendly("anything at all", "douyin")
         assert "抖音" in msg
 
+    def test_xiaohongshu_no_video_formats(self):
+        msg = errors.friendly("ERROR: [XiaoHongShu] 123: No video formats found!", "xiaohongshu")
+        assert "纯图文" in msg or "没有视频" in msg
+
+    def test_tiktok_blocked_ip(self):
+        msg = errors.friendly("ERROR: [TikTok] 123: Your IP address is blocked from accessing this post", "tiktok")
+        assert "IP" in msg and "代理" in msg
+
+    def test_kuaishou_deleted(self):
+        msg = errors.friendly("404 Not Found", "kuaishou")
+        assert "不存在" in msg or "已删除" in msg
+
     def test_unknown_error_falls_back_to_tail(self):
         msg = errors.friendly("some weird failure", "weibo")
         assert msg == "下载失败：some weird failure"

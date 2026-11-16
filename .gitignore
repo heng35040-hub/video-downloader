@@ -31,3 +31,5 @@ SHA256SUMS.txt
 settings.json
 settings.json.tmp
 video-downloader/
+.venv/
+venv/

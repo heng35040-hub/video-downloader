@@ -97,6 +97,10 @@ def _resolve_ytdlp_cmd():
     exe = os.path.join(TOOLS_DIR, _YTDLP_EXE_NAME)
     if os.path.isfile(exe):
         return [exe]
+    if _WIN and os.environ.get("LOCALAPPDATA"):
+        user_exe = os.path.join(os.environ["LOCALAPPDATA"], "VideoDownloader", "tools", _YTDLP_EXE_NAME)
+        if os.path.isfile(user_exe):
+            return [user_exe]
     bundled = _bundled_ytdlp_cmd()
     if bundled:
         return bundled
@@ -121,6 +125,8 @@ def _ffmpeg_dir():
     """
     exe_name = "ffmpeg.exe" if _WIN else "ffmpeg"
     cands = [TOOLS_DIR]
+    if _WIN and os.environ.get("LOCALAPPDATA"):
+        cands.append(os.path.join(os.environ["LOCALAPPDATA"], "VideoDownloader", "tools"))
     if YTDLP_CMD:
         cands.append(os.path.dirname(YTDLP_CMD[0]))
     found = shutil.which(exe_name)
@@ -356,7 +362,7 @@ PROXY, PROXY_HOST, PROXY_PORT = _detect_proxy()
 # 取真实 headed Chrome 的值。绝对不能留 headless 默认值 —— 那里面带
 # "HeadlessChrome"，反爬一行代码就能认出来。
 BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-              "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36")
+              "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 
 # ---- 支持作者（自愿）----
 # Your donation page URL (e.g. Afdian, PayPal); a "Support" button appears
